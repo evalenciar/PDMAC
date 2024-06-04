@@ -1,3 +1,9 @@
+# Ignore the following folders
+data/
+references/
+results/
+index.xlsx
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

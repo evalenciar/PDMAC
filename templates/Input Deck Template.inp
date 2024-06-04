@@ -1,0 +1,73 @@
+*Heading
+*Preprint, echo=NO, model=NO, history=NO, contact=NO
+** PIPE GEOMETRY **********************************************************
+*Part, name=PART-1
+*Node, System=C
+#Nodes#
+*Element, type=S4R
+#Elements#
+*Elgen
+#Elgen#
+*Nset, nset="End Nodes"
+#BCNodes#
+*Elset, elset=Pipe, generate
+#All_Elements#
+*Elset, elset="_Internal Surface_SNEG", internal, generate
+#All_Elements#
+*Surface, type=ELEMENT, name="Internal Surface"
+"_Internal Surface_SNEG", SNEG
+** Section: Section-1
+*Shell Section, elset=Pipe, material=Material-1, offset=SNEG
+#Wall_Thickness#, 5
+*End Part
+**************************************************************************  
+** PIPE ASSEMBLY *********************************************************
+**
+*Assembly, name=Assembly
+**  
+*Instance, name=PART-1-1, part=PART-1
+*End Instance
+**  
+*End Assembly
+************************************************************************** 
+** MATERIALS PROPERTIES **************************************************
+** 
+*Material, name=Material-1
+*Elastic
+ 2.95e+07, 0.3
+************************************************************************** 
+** BOUNDARY CONDITIONS ***************************************************
+** 
+** Name: BC-1 Type: Symmetry/Antisymmetry/Encastre
+*Boundary
+PART-1-1."End Nodes", ZSYMM
+************************************************************************** 
+** STEP: Pressure Up *****************************************************
+** 
+*Step, name="Pressure Up", nlgeom=YES
+*Static
+0.1, 1., 1e-05, 1.
+** 
+** LOADS
+** 
+** Name: Load-1   Type: Pressure
+*Dsload
+PART-1-1."Internal Surface", P, #Pressure#
+************************************************************************** 
+** OUTPUT REQUESTS *******************************************************
+** 
+*Restart, write, frequency=0
+** 
+** FIELD OUTPUT: F-Output-1
+** 
+*Output, field, time interval=0.1
+*Node Output
+CF, RF, U, COORD
+*Element Output, directions=YES
+LE, PE, PEEQ, PEMAG, S
+** 
+** HISTORY OUTPUT: H-Output-1
+** 
+*Output, history, variable=PRESELECT
+*End Step
+***************************************************************************
