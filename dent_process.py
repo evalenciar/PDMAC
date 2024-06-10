@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import time
 import shutil
 import os
-import readline
+# import readline
 import sys
 
 # Prevent the figures from being displayed
@@ -283,7 +283,7 @@ def collect_raw_data_v7(rd_path):
     rd_radius = rd_radius * 0.0393701
     return rd_axial, rd_circ, rd_radius
     
-def data_smoothing(OD, circ_int, axial_int, circ_window, circ_smooth, axial_window, axial_smooth, rd_axial, rd_circ_deg, rd_radius):
+def data_smoothing(OD, rd_axial, rd_circ_deg, rd_radius, circ_int=0.5, axial_int=0.5, circ_window=5, circ_smooth=0.001, axial_window=9, axial_smooth=0.00005):
     """
     ASME B31.8-2020 Nonmandatory Appendix R Estimating Strain in Dents recommends 
     the use of suitable data smoothing techniques in order to minimize the effect 
@@ -291,11 +291,17 @@ def data_smoothing(OD, circ_int, axial_int, circ_window, circ_smooth, axial_wind
     
     This function applies the Savitzky-Golay filter on the data, then generates 
     spline curves that are evaluated at desired intervals.
-    
+
     Parameters
     ----------
     OD : float
         pipeline nominal outside diameter, in
+    rd_axial : array of floats
+        1-D array containing the axial displacement, in
+    rd_circ : array of floats
+        1-D array containing the circumferential displacement, deg
+    rd_radius : array of floats
+        2-D array containing the radial values with shape (axial x circ), in
     circ_int : float
         the desired circumferential interval length for the output data, in. Default = 0.5
     axial_int : float
@@ -304,19 +310,13 @@ def data_smoothing(OD, circ_int, axial_int, circ_window, circ_smooth, axial_wind
         the smoothing window (number of points to consider) for the circumferential 
         smoothing filter. Note: this must be an odd number. Default = 5
     circ_smooth : float
-        the circumferential smoothing parameter for splines. Default = 0.0015
+        the circumferential smoothing parameter for splines. Default = 0.001
     axial_window : int
         the smoothing window (number of points to consider) for the axial 
-        smoothing filter. Note: this must be an odd number. Default = 15
+        smoothing filter. Note: this must be an odd number. Default = 9
     axial_smooth : float
-        the axial smoothing parameter for splines. Default 0.001
-    rd_axial : array of floats
-        1-D array containing the axial displacement, in
-    rd_circ : array of floats
-        1-D array containing the circumferential displacement, deg
-    rd_radius : array of floats
-        2-D array containing the radial values with shape (circ x axial), in
-
+        the axial smoothing parameter for splines. Default 0.00005
+    
     Returns
     -------
     sd_axial : array of floats
@@ -602,11 +602,11 @@ def abaqus_submit(dent_ID):
     command_dir = "cd " + os.getcwd() + "/" + inp_file_path
     command = command_dir + " && " + command_str
     # Clear the existing history before running the command
-    readline.clear_history()
+    # readline.clear_history()
     os.system('cls')
     os.system(command)
     os.system('cls')
-    readline.clear_history()
+    # readline.clear_history()
     
     print((time_ref + 'Submitted project: %s') % (time.time() - time_start, str(dent_ID)))
     
@@ -663,11 +663,11 @@ def abaqus_submit(dent_ID):
     command_str = "abaqus viewer noGUI=" + script_name
     command_dir = "cd " + os.getcwd() + "/" + inp_file_path
     command = command_dir + " && " + command_str
-    readline.clear_history()
+    # readline.clear_history()
     os.system('cls')
     os.system(command)
     os.system('cls')
-    readline.clear_history()
+    # readline.clear_history()
     
     # Wait for 30 seconds for all images to be created
     time.sleep(15)
@@ -1115,7 +1115,7 @@ def process_dent(dent_ID, dent_path, results_path_og, ili_format, OD, WT, SMYS, 
     
     # Perform data smoothing on the raw data
     if smoothing == True:
-        sd_axial, sd_circ, sd_radius = data_smoothing(OD, circ_int, axial_int, circ_window, circ_smooth, axial_window, axial_smooth, rd_axial, rd_circ, rd_radius)
+        sd_axial, sd_circ, sd_radius = data_smoothing(OD, rd_axial, rd_circ, rd_radius, circ_int, axial_int, circ_window, circ_smooth, axial_window, axial_smooth)
         
     else:
         sd_axial  = rd_axial.copy()
