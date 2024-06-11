@@ -18,7 +18,8 @@ import dent_process
 
 def move_update(attributes, div, style = 'float:left;clear:left;font_size=13px'):
     # Define the callback function for the contour plot
-    return CustomJS(args=dict(div=div, source_long=source_long, source_circ=source_circ, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius), code="""
+    global move_update_JS
+    move_update_JS = CustomJS(args=dict(div=div, source_long=source_long, source_circ=source_circ, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius), code="""
                     const xval = cb_obj.x; // xval = axial value
                     const yval = cb_obj.y; // yval = circumferential value
 
@@ -73,9 +74,11 @@ def move_update(attributes, div, style = 'float:left;clear:left;font_size=13px')
                     div.text = lines.join("\\n");
                     // END DEBUGGING
                 """ % (style))
+    return move_update_JS
 
 def tap_update(attributes):
-    return CustomJS(args=dict(source_long2=source_long2, source_circ2=source_circ2, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius), code="""
+    global tap_update_JS
+    tap_update_JS = CustomJS(args=dict(source_long2=source_long2, source_circ2=source_circ2, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius), code="""
                     const xval = cb_obj.x; // xval = axial value
                     const yval = cb_obj.y; // yval = circumferential value
 
@@ -113,6 +116,7 @@ def tap_update(attributes):
                     source_circ2.change.emit();
 
                 """)
+    return tap_update_JS
 
 def pol2cart(r, rad):
     # Convert from cylindrical to cartesian coordinates
@@ -160,8 +164,11 @@ def update_sources(rd_axial, rd_circ, rd_radius):
     source_long.data = {'x':rd_axial, 'y':rd_radius[:,0]}
     source_long2.data = {'x':rd_axial, 'y':rd_radius[:,0]}
 
-    plot_cont.js_on_event(events.MouseMove, move_update(None, div))
-    plot_cont.js_on_event(events.Tap, tap_update(None))
+    move_update_JS.args = dict(div=div, source_long=source_long, source_circ=source_circ, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius)
+    tap_update_JS.args = dict(source_long2=source_long2, source_circ2=source_circ2, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius)
+
+    # plot_cont.js_on_event(events.MouseMove, move_update(None, div))
+    # plot_cont.js_on_event(events.Tap, tap_update(None))
 
 def smooth_data(attr):
     global rd_axial
@@ -178,9 +185,9 @@ def smooth_data(attr):
     
     # Perform data smoothing on the raw data
     print("Began data smoothing")
-    rd_axial, rd_circ, rd_radius = dent_process.data_smoothing(OD, rd_axial, rd_circ, rd_radius)
+    sd_axial, sd_circ, sd_radius = dent_process.data_smoothing(OD, rd_axial, rd_circ, rd_radius)
     print("Finished data smoothing")
-    update_sources(rd_axial, rd_circ, rd_radius)
+    update_sources(sd_axial, sd_circ, sd_radius)
     print("Updated data sources")
 
 range_const = 0
