@@ -15,6 +15,7 @@ import io
 import base64
 
 import dent_process
+from surface3d import Surface3d
 
 def move_update(attributes, div, style = 'float:left;clear:left;font_size=13px'):
     # Define the callback function for the contour plot
@@ -167,9 +168,6 @@ def update_sources(rd_axial, rd_circ, rd_radius):
     move_update_JS.args = dict(div=div, source_long=source_long, source_circ=source_circ, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius)
     tap_update_JS.args = dict(source_long2=source_long2, source_circ2=source_circ2, rd_axial=rd_axial, rd_circ=rd_circ, rd_circ_rad=rd_circ_rad, rd_radius=rd_radius)
 
-    # plot_cont.js_on_event(events.MouseMove, move_update(None, div))
-    # plot_cont.js_on_event(events.Tap, tap_update(None))
-
 def smooth_data(attr):
     global rd_axial
     global rd_circ
@@ -185,7 +183,13 @@ def smooth_data(attr):
     
     # Perform data smoothing on the raw data
     print("Began data smoothing")
-    sd_axial, sd_circ, sd_radius = dent_process.data_smoothing(OD, rd_axial, rd_circ, rd_radius)
+    sd_axial, sd_circ, sd_radius = dent_process.data_smoothing(OD, rd_axial, rd_circ, rd_radius) 
+                                                            #    circ_int=circ_int, 
+                                                            #    axial_int=axial_int, 
+                                                            #    circ_window=circ_window,
+                                                            #    circ_smooth=circ_smooth,
+                                                            #    axial_window=axial_window,
+                                                            #    axial_smooth=axial_smooth)
     print("Finished data smoothing")
     update_sources(sd_axial, sd_circ, sd_radius)
     print("Updated data sources")
@@ -289,8 +293,12 @@ plot_long.add_tools(CrosshairTool(dimensions="height"))
 button_smooth = Button(label="Smooth Data", button_type="success")
 OD = 24
 button_smooth.on_click(smooth_data)
-# button_smooth.js_on_event('button_click', smooth_data(None))
 
-# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), plot_circ))
-curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
+# 3D Plot
+xx, yy = np.meshgrid(rd_axial, rd_circ)
+source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius.T))
+plot_3d = Surface3d(x='x', y='y', z='z', data_source=source_3d, width=400, height=400)
+
+# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
+curdoc().add_root(row(button_smooth, column(plot_cont, plot_long, plot_circ), plot_3d))
 curdoc().title = "PDMAC UI"
