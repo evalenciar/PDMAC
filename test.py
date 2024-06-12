@@ -1,7 +1,7 @@
 import numpy as np
 
 from bokeh.core.properties import Instance, String
-from bokeh.io import show
+from bokeh.io import show, curdoc
 from bokeh.models import ColumnDataSource, LayoutDOM
 from bokeh.util.compiler import TypeScript
 
@@ -198,4 +198,5 @@ source = ColumnDataSource(data=dict(x=xx, y=yy, z=value))
 
 surface = Surface3d(x="x", y="y", z="z", data_source=source, width=600, height=600)
 
-show(surface)
+# show(surface)
+curdoc().add_root(surface)

@@ -296,7 +296,7 @@ button_smooth.on_click(smooth_data)
 
 # 3D Plot
 xx, yy = np.meshgrid(rd_axial, rd_circ)
-source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius.T))
+source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius))
 plot_3d = Surface3d(x='x', y='y', z='z', data_source=source_3d, width=400, height=400)
 
 # curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
