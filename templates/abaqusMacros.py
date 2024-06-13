@@ -29,7 +29,8 @@ img_labels = ['1_MPS_XYZ_0deg','2_MPS_XYZ_90deg','3_MPS_XYZ_180deg','4_MPS_XYZ_2
               '13_MPS_Dent']
 img_labels = [fileName + '_' + s for s in img_labels]
 # Create the folder to save all of the images
-int_review_path = 'Internal Review/'
+# int_review_path = 'Internal Review/'
+int_review_path = os.getcwd() + '/'
 # os.mkdir(int_review_path)
 
 session.Viewport(name='Viewport: 1', origin=(0.0, 0.0), width=300, height=150)
