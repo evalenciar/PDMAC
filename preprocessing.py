@@ -275,6 +275,18 @@ def collect_raw_data_v8(rd_path, IR):
 
 class ImportData:
     def __init__(self, rd_path, ILI_format, OD=None):
+        """
+        Import data in the desired ILI format. Below are a list of recognized ILI formats.
+
+        Parameters
+        ----------
+        rd_path : string
+            the location of the feature of interest
+        ILI_format : string
+            the desired ILI format that corresponds to the feature of interest
+        OD : float
+            the outside diameter measurement (default = None), in
+        """
         self.name = rd_path.split('/')[-1].split('.')[0]    # Get the filename
         self.path = rd_path
         self.ILI_format = str(ILI_format)
