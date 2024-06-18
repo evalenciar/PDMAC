@@ -439,11 +439,16 @@ class ImportData:
         global inp_file_path
         global int_review_path
         
-        dent_ID = self.name
-        OD = self.OD
-        sd_axial = self.s_axial
-        sd_circ = self.s_circ
-        sd_radius = self.s_radius
+        dent_ID     = self.name
+        OD          = self.OD
+        sd_axial    = self.s_axial
+        sd_circ     = self.s_circ
+        sd_radius   = self.s_radius
+        inp_wt      = WT
+        num_cal     = sd_circ.size
+        num_nodes   = sd_radius.size
+        def_angl    = 60
+        bar_stress  = SMYS # This is based on the SMYS of the pipe
 
         # lim_cc and lim_ax is the amount of nodes to display applied to both sides in the circumferential and axial directions, respectively
         # For example, using lim_cc = 20 and lim_ax 40 will result in a field of points of (circ x axial) = (40 x 80)
@@ -463,11 +468,6 @@ class ImportData:
             axial_interval.append(sd_axial[i+1] - sd_axial[i])
         axial_interval_avg = np.mean(axial_interval)
         lim_ax = int(math.ceil(2*OD/axial_interval_avg/2))
-        
-        num_cal     = sd_circ.size
-        num_nodes   = sd_radius.size
-        def_angl    = 60
-        bar_stress  = SMYS # This is based on the SMYS of the pipe
         
         # Create the *Node array
         z_len = sd_axial.size
@@ -510,9 +510,6 @@ class ImportData:
         # Create the boundary condition nodes, *BCNodes
         # The first set of nodes at the start Z position, and the second at the last Z position
         inp_bcnode = list(range(1, theta_len + 1)) + list(range(inp_node_i - theta_len, inp_node_i + 1))
-        
-        # Wall thickness of the pipe
-        inp_wt = WT
         
         # Loop through the inp_file and search for the following keywords
         # - #Nodes#
@@ -593,7 +590,8 @@ class ImportData:
         # def_angl  - Angle for Isometric View
         
         # Create an Internal Review folder to save all of the images and reports
-        int_review_path = inp_file_path + 'Internal Review/'
+        # int_review_path = inp_file_path + 'Internal Review/'
+        int_review_path = inp_file_path
         os.mkdir(int_review_path)
         
         # Create a node_info.txt file to export theses values
