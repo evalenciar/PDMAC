@@ -276,7 +276,7 @@ def collect_raw_data_v8(rd_path, IR):
     rd_radius = rd_radius / 25.4
     return rd_axial, rd_circ, rd_radius
 
-class ImportData:
+class PreProcess:
     def __init__(self, rd_path, ILI_format, OD, filename):
         """
         Import data in the desired ILI format. Below are a list of recognized ILI formats.
@@ -746,3 +746,102 @@ class ImportData:
         # Wait for 30 seconds for all images to be created
         time.sleep(15)
 
+class PostProcess:
+    def __init__(self, OD, WT, d, L, axial, circ, radius):
+        self.OD = OD
+        self.WT = WT
+        self.d  = d
+        self.L  = L
+        self.axial = axial
+        self.circ = circ
+        self.circ_r = np.deg2rad(self.circ)
+        self.radius = radius
+
+        self._calculate_strain()
+
+    def _calculate_strain(self):
+        """
+        ASME B31.8-2020 Nonmandatory Appendix R Estimating Strain in Dents calculates
+        the bending strain in the circumferential direction, e1, the bending strain in
+        the longitudinal direction, e2, and the extensional strain in the longitudinal
+        direction, e3. 
+        
+        This function calculates strains e1, e2, and e3 along with the strain for the
+        inside and outside pipe surfaces.
+
+        Returns
+        -------
+        df_eo : DataFrame
+            DataFrame containing all of the strain for the outside pipe surface
+        df_ei : DataFrame
+            DataFrame containing all of the strain for the inside pipe surface
+        df_e1 : DataFrame
+            DataFrame containing the bending strain in the circumferential direction
+        df_e2 : DataFrame
+            DataFrame containing the bending strain in the longitudinal direction
+        e3 : float
+            float value of the extensional strain in the longitudinal direction
+        df_R1 : DataFrame
+            DataFrame containing the Radius of Curvature in the circumferential plane
+        df_R2 : DataFrame
+            DataFrame containing the Radius of Curvature in the longitudinal plane
+        """
+
+        R0 = self.OD/2
+
+        # Strain calculations
+        sd_e1 = np.zeros(self.radius.shape)
+        sd_e2 = np.zeros(self.radius.shape)
+
+        e3 = (1/2)*(self.d/self.L)**2
+
+        # Radius of curvatures
+        sd_R1 = np.zeros(self.radius.shape)
+        sd_R2 = np.zeros(self.radius.shape)
+        
+        # Calculate the bending strain in the circumferential direction, e1
+        for axial_index, circ_profile in enumerate(self.radius[:,0]):
+            circ_profile = self.radius[axial_index, :]
+            # First derivative
+            d_circ = np.gradient(circ_profile, self.circ_r)
+            # d_circ[0] = (circ_profile[1] - circ_profile[-1])/(self.circ_r[1] - (2*np.pi - self.circ_r[-1]))
+            # d_circ[-1] = (circ_profile[-2] - circ_profile[0])/((2*np.pi - self.circ_r[-2]) - self.circ_r[0])
+            # Second derivative
+            dd_circ = np.gradient(d_circ, self.circ_r)
+            # dd_circ[0] = (circ_profile[1] - circ_profile[-1])/(self.circ_r[1] - (2*np.pi - self.circ_r[-1]))
+            # dd_circ[-1] = (circ_profile[-2] - circ_profile[0])/((2*np.pi - self.circ_r[-2]) - self.circ_r[0])
+            # Radius of curvature in polar coordinates
+            R1 = (circ_profile**2 + d_circ**2)**(3/2)/abs(circ_profile**2 + 2*d_circ**2 - circ_profile*dd_circ)
+            # Calculate e1 and save it for this circumferential profile
+            sd_e1[axial_index, :] = (self.WT/2)*(1/R0 - 1/R1)
+            sd_R1[axial_index, :] = R1
+            
+        # Calculate the bending strain in the longitudinal (axial) direction, e2
+        for circ_index, axial_profile in enumerate(self.radius[0,:]):
+            axial_profile = self.radius[:, circ_index]
+            # First derivative
+            d_axial = np.gradient(axial_profile, self.axial)
+            # Second derivative
+            dd_axial = np.gradient(d_axial, self.axial)
+            # Radius of curvature. Added np.float64 to help division by zero -> inf
+            R2 = (1 + d_axial**2)**(3/2)/np.float64(abs(dd_axial))
+            R2[R2 == np.inf] = 1000000
+            # Calculate e2 and save it for this axial profile
+            sd_e2[:, circ_index] = self.WT/(2*R2)
+            sd_R2[:, circ_index] = R2
+            
+        # Calculate the final strain for the outside pipe, eo, and inside pipe, ei
+        self.ei = (2/np.sqrt(3))*np.sqrt(sd_e1**2 + sd_e1*(sd_e2 + e3) + (sd_e2 + e3)**2)
+        self.eo = (2/np.sqrt(3))*np.sqrt((-sd_e1)**2 + (-sd_e1)*((-sd_e2) + e3) + ((-sd_e2) + e3)**2)
+        self.e1 = sd_e1
+        self.e2 = sd_e2
+        self.R0 = R0
+        self.R1 = R1
+        self.R2 = R2
+
+        # self.df_ei = pd.DataFrame(data=ei, columns=self.circ, index=self.axial)
+        # self.df_eo = pd.DataFrame(data=eo, columns=self.circ, index=self.axial)
+        # self.df_e1 = pd.DataFrame(data=sd_e1, columns=self.circ, index=self.axial)
+        # self.df_e2 = pd.DataFrame(data=sd_e2, columns=self.circ, index=self.axial)
+        # self.df_R1 = pd.DataFrame(data=sd_R1, columns=self.circ, index=self.axial)
+        # self.df_R2 = pd.DataFrame(data=sd_R2, columns=self.circ, index=self.axial)

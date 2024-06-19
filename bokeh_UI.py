@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+# import pandas as pd
 
 from bokeh import events
 from bokeh.io import curdoc
@@ -93,18 +93,22 @@ class CreateGUI:
         self.button_reset = Button(label="Reset Data", button_type="default")
         self.button_reset.on_click(self._reset_data)
 
+        # Button to perform strain analysis
+        self.button_strain = Button(label="Calculate Strain", button_type="success")
+        self.button_strain.on_click(self._strain)
+
         # Contour plot
         self.axial = np.zeros(10)
         self.circ = np.zeros(10)
         self.radius = np.zeros((10,10))
         self.plot_cont = figure(title="Surface Plot", height=400, width=800,
-                    tools='reset, pan, crosshair, wheel_zoom, box_zoom',
+                    tools='pan, crosshair, wheel_zoom, box_zoom',
                     x_range=[0,1],
                     y_range=[0,360])
         levels = np.linspace(0, 1, 17)
         self.contour_renderer = self.plot_cont.contour(x=self.axial, y=self.circ, z=self.radius, levels=levels, fill_color=Viridis256, line_color="black", line_width=0, line_alpha=0)
-        colorbar = self.contour_renderer.construct_color_bar()
-        self.plot_cont.add_layout(colorbar, 'below')
+        self.colorbar = self.contour_renderer.construct_color_bar()
+        self.plot_cont.add_layout(self.colorbar, 'below')
         self.plot_cont.xaxis.axis_label
         self.plot_cont.toolbar.logo = None
 
@@ -112,7 +116,7 @@ class CreateGUI:
         self.source_circ = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
         self.source_circ2 = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
         self.plot_circ = figure(title="Circumferential Plot", height=600, width=600,
-                        tools='reset, pan, wheel_zoom, box_zoom',
+                        tools='pan, wheel_zoom, box_zoom',
                         x_range=[0,1],
                         y_range=[0,1])
         self.plot_circ.scatter(x='x', y='y', source=self.source_circ, size=5, legend_label="Hover View", color='blue')
@@ -123,7 +127,7 @@ class CreateGUI:
         self.source_long = ColumnDataSource(data={'x':self.axial, 'y':self.radius[0,:]})
         self.source_long2 = ColumnDataSource(data={'x':self.axial, 'y':self.radius[0,:]})
         self.plot_long = figure(title="Longitudinal Plot", height=400, width=800,
-                        tools='reset, pan, wheel_zoom, box_zoom',
+                        tools='pan, wheel_zoom, box_zoom',
                         x_range=[0,1],
                         y_range=[0,1])
                         # tooltips=[("index","$index"),("(x,y)","($x,$y)")])
@@ -151,7 +155,7 @@ class CreateGUI:
                     self.button_reset]
         inputs = column(controls, width=250, height=800)
         plots = column([self.plot_cont, self.plot_long])
-        layout = column(desc, row(inputs, plots, self.plot_circ), height=800)
+        layout = column(desc, row(inputs, self.button_strain, plots, self.plot_circ), height=800)
 
         # curdoc().add_root(row(self.button_smooth, column(self.plot_cont, self.plot_long), self.plot_circ))
         curdoc().add_root(layout)
@@ -168,7 +172,7 @@ class CreateGUI:
         # print(f"rd_path = {rd_path}")
 
         # self.df = pro.ImportData(rd_path=rd_path, ILI_format=self.input_ILI_format.value, OD=self.input_OD.value, filename=self.file_source.data['file_name'][0])
-        self.df = pro.ImportData(rd_path=rd_path, ILI_format=str(self.input_ILI_format.value), OD=float(self.input_OD.value), filename=self.button_select_file.filename)
+        self.df = pro.PreProcess(rd_path=rd_path, ILI_format=str(self.input_ILI_format.value), OD=float(self.input_OD.value), filename=self.button_select_file.filename)
 
         self.axial  = self.df.o_axial
         self.circ   = self.df.o_circ
@@ -182,6 +186,15 @@ class CreateGUI:
         y = r * np.sin(rad)
         return x, y
     
+    def _strain(self, attr):
+        depth=0.05
+        length=2.00
+        self.strain = pro.PostProcess(OD=float(self.input_OD.value), WT=float(self.input_WT.value), d=depth, L=length, axial=self.df.f_axial, circ=self.df.f_circ, radius=self.df.f_radius)
+
+        self.radius = self.strain.ei
+
+        self._update_sources()
+
     def _smooth_data(self, attr):
         self.df.smooth_data()
 
@@ -287,6 +300,8 @@ class CreateGUI:
         self.plot_cont.y_range.end = self.circ[-1]
         levels = np.linspace(self.radius.min(), self.radius.max(), 17)
         self.contour_renderer.set_data(contour_data(x=self.axial, y=self.circ, z=self.radius.T, levels=levels))
+        # self.colorbar.levels = list(levels)
+        # self.colorbar.ticker.ticks = list(levels)
 
         self.plot_circ.x_range.start = - (self.radius.max() + self.range_const)
         self.plot_circ.x_range.end = self.radius.max() + self.range_const
