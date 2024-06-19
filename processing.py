@@ -4,6 +4,9 @@ import math
 from scipy.interpolate import splrep, splev
 from scipy.signal import savgol_filter
 import os
+import sys
+import time
+import shutil
 
 def collect_raw_data_v1(rd_path):
     # Vendor 1
@@ -274,7 +277,7 @@ def collect_raw_data_v8(rd_path, IR):
     return rd_axial, rd_circ, rd_radius
 
 class ImportData:
-    def __init__(self, rd_path, ILI_format, OD=None):
+    def __init__(self, rd_path, ILI_format, OD):
         """
         Import data in the desired ILI format. Below are a list of recognized ILI formats.
 
@@ -285,11 +288,21 @@ class ImportData:
         ILI_format : string
             the desired ILI format that corresponds to the feature of interest
         OD : float
-            the outside diameter measurement (default = None), in
+            the outside diameter measurement, in
+        Outputs
+        ----------
+        o_axial & f_axial : array of floats
+            1-D array containing the axial displacement, in
+        o_circ & f_circ : array of floats
+            1-D array containing the circumferential displacement, deg
+        o_radius & f_radius : array of floats
+            2-D array containing the radial values with shape (axial x circ), in
         """
         self.name = rd_path.split('/')[-1].split('.')[0]    # Get the filename
         self.path = rd_path
         self.ILI_format = str(ILI_format)
+        self.OD = OD
+        self.input_file = False
 
         ILI_format_list = ['Baker Hughes', 'Enduro', 'Entegra', 'Onestream', 'Quest',
                            'Rosen', 'TDW', 'TDW (v2)', 'PBF', 'Campos', 'Southern']
@@ -320,11 +333,16 @@ class ImportData:
         else:
             raise Exception('ILI format %s was not found. Use one of the following: %s' % (ILI_format, ', '.join(ILI_format_list)))
         
-        self.axial = rd_axial
-        self.circ = rd_circ
-        self.radius = rd_radius
+        # Keep the original
+        self.o_axial = rd_axial
+        self.o_circ = rd_circ
+        self.o_radius = rd_radius
+        # Make a final copy for manipulation
+        self.f_axial = rd_axial
+        self.f_circ = rd_circ
+        self.f_radius = rd_radius
 
-    def smooth_data(self, OD, circ_int=0.5, axial_int=0.5, circ_window=5, circ_smooth=0.001, axial_window=9, axial_smooth=0.00005):
+    def smooth_data(self, circ_int=0.5, axial_int=0.5, circ_window=5, circ_smooth=0.001, axial_window=9, axial_smooth=0.00005):
         """
         ASME B31.8-2020 Nonmandatory Appendix R Estimating Strain in Dents recommends 
         the use of suitable data smoothing techniques in order to minimize the effect 
@@ -368,15 +386,16 @@ class ImportData:
             the smoothed radial values in the fixed intervals, in.
         """
         
-        rd_axial = self.axial
-        rd_circ_deg = self.circ
-        rd_radius = self.radius
+        # Always input the original data to ensure that data is not smoothed twice
+        rd_axial = self.o_axial
+        rd_circ_deg = self.o_circ
+        rd_radius = self.o_radius
         
         filter_polyorder = 3
         filter_mode = 'wrap'
         spline_deg = 3
         
-        OR = OD/2
+        OR = self.OD/2
         
         # Convert the circumferential orientation from degrees to radians
         rd_circ = np.deg2rad(rd_circ_deg)
@@ -434,7 +453,6 @@ class ImportData:
         sd_radius = sd_radius_axial2
         
         # Save parameters
-        self.OD = OD
         self.circ_int = circ_int
         self.axial_int = axial_int
         self.circ_window = circ_window
@@ -442,25 +460,32 @@ class ImportData:
         self.axial_window = axial_window
         self.axial_smooth = axial_smooth
 
-        self.s_axial = sd_axial
-        self.s_circ = sd_circ
-        self.s_radius = sd_radius
+        self.f_axial = sd_axial
+        self.f_circ = sd_circ
+        self.f_radius = sd_radius
 
-    def create_input_file(self, WT, SMYS, results_path='results/', templates_path='templates/'):
-        global inp_file_name
-        global inp_file_path
-        global int_review_path
-        
+    def create_input_file(self, WT, SMYS, results_path='results/', templates_path='templates/'):               
+        self.results_path = results_path
         dent_ID     = self.name
         OD          = self.OD
-        sd_axial    = self.s_axial
-        sd_circ     = self.s_circ
-        sd_radius   = self.s_radius
+        sd_axial    = self.f_axial
+        sd_circ     = self.f_circ
+        sd_radius   = self.f_radius
         inp_wt      = WT
         num_cal     = sd_circ.size
         num_nodes   = sd_radius.size
         def_angl    = 60
         bar_stress  = SMYS # This is based on the SMYS of the pipe
+
+        # Create an output folder for the dent analysis results.
+        results_path = results_path + str(dent_ID)
+        try:
+            # Directory does not exist, make a new folder
+            os.makedirs(results_path, exist_ok=False)
+        except:
+            # Directory already exists
+            sys.exit(f'Directory {results_path} already exists. Please enter a new folder location or delete the exist Results folder.')
+        results_path = results_path + '/'
 
         # lim_cc and lim_ax is the amount of nodes to display applied to both sides in the circumferential and axial directions, respectively
         # For example, using lim_cc = 20 and lim_ax 40 will result in a field of points of (circ x axial) = (40 x 80)
@@ -533,12 +558,14 @@ class ImportData:
         
         # Create a copy of the Input Deck Template text file
         inp_file_template_str = templates_path + 'Input Deck Template.inp'
-        inp_file_name = "ID-" + str(dent_ID)
+        inp_file_name = "Feature " + str(dent_ID)
         inp_file_path = results_path + 'FEA Results'
+        self.inp_file_name = inp_file_name
+        self.inp_file_path = inp_file_path
         # Create a folder for the Abaqus files
         os.mkdir(inp_file_path)
-        inp_file_path = inp_file_path + '/'
-        inp_file_deck = inp_file_path + inp_file_name + '.inp'
+        # inp_file_path = inp_file_path + '/'
+        inp_file_deck = inp_file_path + '/Abaqus/' + inp_file_name + '.inp'
         # Load the Input Deck Template text file
         inp_file_template = open(inp_file_template_str, 'r')
         # Create a leaf directory and all intermediate ones
@@ -603,8 +630,8 @@ class ImportData:
         
         # Create an Internal Review folder to save all of the images and reports
         # int_review_path = inp_file_path + 'Internal Review/'
-        int_review_path = inp_file_path
-        os.mkdir(int_review_path)
+        int_review_path = inp_file_path + '/'
+        # os.mkdir(int_review_path)
         
         # Create a node_info.txt file to export theses values
         info_file_name = "node_info"
@@ -633,3 +660,88 @@ class ImportData:
         info_file_contents.append('bar_stress = ' + str(bar_stress) + "\n")
         info_file.writelines(info_file_contents)
         info_file.close()
+
+        self.input_file = True
+
+    def submit_input_file(self, templates_path='templates/'):
+        if self.input_file == False:
+            return print('Input file has not been created. Please create the input file first.')
+
+        inp_file_name = self.inp_file_name
+        inp_file_path = self.inp_file_path
+
+        time_start = time.time()
+        time_ref = '%03d | '
+        time_limit = 60*20 # 20 minutes
+
+        # In order to maintain the same Command Prompt environment, need to do both the
+        # cd directory change and the Abaqus command in one os.system wrapper.
+        command_str = "abaqus job=" + inp_file_name + " cpus=2"
+        command_dir = "cd " + os.getcwd() + "/" + inp_file_path
+        command = command_dir + " && " + command_str
+        # Clear the existing history before running the command
+        os.system('cls')
+        os.system(command)
+        os.system('cls')
+
+        # First check that the file exists, since there may be a delay before it is created
+        sta_path = inp_file_path + inp_file_name + ".sta"
+        file_check_time = time.time()
+        
+        while not os.path.exists(sta_path):
+            time.sleep(5)
+            print((time_ref + 'Waiting for Abaqus to create the .sta file.') % (time.time() - time_start))
+            
+            # Check that it has not exceeded the time limit to prevent an infite loop
+            if (time.time() - file_check_time)>time_limit:
+                # End the script
+                print((time_ref + '========== ERROR ==========') % (time.time() - time_start))
+                sys.exit('Exceeded time limit of %.0f seconds to search for .sta file. Proceess aborted.' % (time_limit))
+            
+        print((time_ref + 'Abaqus has created the .sta file. Begin monitoring this file until Abaqus concludes.') % (time.time() - time_start))
+        
+        # Restart the time limit for monitoring the .sta file
+        file_check_time = time.time()
+        
+        sta_file = open(sta_path, "r")
+        sta_contents = sta_file.readlines()
+        
+        # Loop until " THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n" shows up at the end
+        str_success = " THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n"
+        while sta_contents[-1] != str_success:
+            # Wait for 30 seconds before opening the file again and checking
+            time.sleep(10)
+            # Reload the .sta file with its contents
+            print((time_ref + 'Monitoring the .sta file.') % (time.time() - time_start))
+            sta_file = open(sta_path, "r")
+            sta_contents = sta_file.readlines()
+            
+            # Check that it has not exceeded the time limit to prevent an infite loop
+            if (time.time() - file_check_time)>time_limit:
+                # End the script
+                print((time_ref + '========== ERROR ==========') % (time.time() - time_start))
+                sys.exit('Exceeded time limit of %.0f seconds to search for .sta file. Proceess aborted.' % (time_limit))
+        
+        sta_file.close()
+        print((time_ref + '===== SCF CALCULATION ======') % (time.time() - time_start))
+        
+        # Copy the abaqusMacros.py template file to the input deck folder
+        script_path = templates_path
+        script_name = 'abaqusMacros.py'
+        script_file = script_path + script_name
+        # Use the same destination as the Input File
+        shutil.copy(script_file, inp_file_path)
+        # Run the abaqusMacros.py script to do the following:
+        # - Print 11 images from the .odb file for analysis
+        # - Print the MaxPrincipal value for future SCF calculations
+        command_str = "abaqus viewer noGUI=" + script_name
+        command_dir = "cd " + os.getcwd() + "/" + inp_file_path
+        command = command_dir + " && " + command_str
+
+        os.system('cls')
+        os.system(command)
+        os.system('cls')
+        
+        # Wait for 30 seconds for all images to be created
+        time.sleep(15)
+
