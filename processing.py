@@ -277,7 +277,7 @@ def collect_raw_data_v8(rd_path, IR):
     return rd_axial, rd_circ, rd_radius
 
 class ImportData:
-    def __init__(self, rd_path, ILI_format, OD):
+    def __init__(self, rd_path, ILI_format, OD, filename):
         """
         Import data in the desired ILI format. Below are a list of recognized ILI formats.
 
@@ -298,7 +298,8 @@ class ImportData:
         o_radius & f_radius : array of floats
             2-D array containing the radial values with shape (axial x circ), in
         """
-        self.name = rd_path.split('/')[-1].split('.')[0]    # Get the filename
+        # self.name = rd_path.split('/')[-1].split('.')[0]    # Get the filename
+        self.name = filename
         self.path = rd_path
         self.ILI_format = str(ILI_format)
         self.OD = OD

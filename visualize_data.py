@@ -195,115 +195,115 @@ def smooth_data(attr):
     print("Updated data sources")
 
 
-if __name__ == '__main__':
-    range_const = 0
 
-    # Collect the raw data
-    dent_path = 'ADV Project Folders/5972_RadiiData.csv'
-    rd_axial, rd_circ, rd_radius = dent_process.collect_raw_data_v7(dent_path)
-    rd_circ_rad = np.deg2rad(rd_circ)
-    # df = pd.DataFrame(data=rd_radius, index=rd_axial, columns=rd_circ)
+range_const = 0
 
-    # File selection
-    file_source = ColumnDataSource({'file_contents':[], 'file_name':[]})
-    file_source.on_change('data', file_callback)
+# Collect the raw data
+dent_path = 'ADV Project Folders/5972_RadiiData.csv'
+rd_axial, rd_circ, rd_radius = dent_process.collect_raw_data_v7(dent_path)
+rd_circ_rad = np.deg2rad(rd_circ)
+# df = pd.DataFrame(data=rd_radius, index=rd_axial, columns=rd_circ)
 
-    # Create a CustomJS callback to handle file selection
-    select_file = CustomJS(args=dict(file_source=file_source), code = """
-                    function read_file(filename) {
-                        var reader = new FileReader();
-                        reader.onload = load_handler;
-                        reader.onerror = error_handler;
-                        // readAsDataURL represents the file's data as a base64 encoded string
-                        reader.readAsDataURL(filename);
+# File selection
+file_source = ColumnDataSource({'file_contents':[], 'file_name':[]})
+file_source.on_change('data', file_callback)
+
+# Create a CustomJS callback to handle file selection
+select_file = CustomJS(args=dict(file_source=file_source), code = """
+                function read_file(filename) {
+                    var reader = new FileReader();
+                    reader.onload = load_handler;
+                    reader.onerror = error_handler;
+                    // readAsDataURL represents the file's data as a base64 encoded string
+                    reader.readAsDataURL(filename);
+                }
+
+                function load_handler(event) {
+                    var b64string = event.target.result;
+                    file_source.data = {'file_contents' : [b64string], 'file_name':[input.files[0].name]};
+                    file_source.trigger("change");
+                }
+
+                function error_handler(evt) {
+                    if(evt.target.error.name == "NotReadableError") {
+                        alert("Can't read file!");
                     }
+                }
 
-                    function load_handler(event) {
-                        var b64string = event.target.result;
-                        file_source.data = {'file_contents' : [b64string], 'file_name':[input.files[0].name]};
-                        file_source.trigger("change");
+                var input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.onchange = function(){
+                    if (window.FileReader) {
+                        read_file(input.files[0]);
+                    
+                    } else {
+                        alert('FileReader is not supported in this browser');
                     }
+                }
+                input.click();
+                """)
 
-                    function error_handler(evt) {
-                        if(evt.target.error.name == "NotReadableError") {
-                            alert("Can't read file!");
-                        }
-                    }
+# Create a button that triggers the file input dialog
+# button_select_file = Button(label="Select File", button_type="success")
+# button_select_file.js_on_click(select_file)
 
-                    var input = document.createElement('input');
-                    input.setAttribute('type', 'file');
-                    input.onchange = function(){
-                        if (window.FileReader) {
-                            read_file(input.files[0]);
-                        
-                        } else {
-                            alert('FileReader is not supported in this browser');
-                        }
-                    }
-                    input.click();
-                    """)
+# Contour plot
+plot_cont = figure(title="Surface Plot", height=400, width=800,
+            tools='reset, pan, crosshair, wheel_zoom, box_zoom',
+            x_range=[rd_axial[0], rd_axial[-1]],
+            y_range=[rd_circ[0], rd_circ[-1]])
+levels = np.linspace(rd_radius.min(), rd_radius.max(), 17)
+contour_renderer = plot_cont.contour(x=rd_axial, y=rd_circ, z=rd_radius.T, levels=levels, fill_color=Viridis256, line_color="black", line_width=0, line_alpha=0)
+colorbar = contour_renderer.construct_color_bar()
+plot_cont.add_layout(colorbar, 'below')
+plot_cont.xaxis.axis_label
+plot_cont.toolbar.logo = None
 
-    # Create a button that triggers the file input dialog
-    # button_select_file = Button(label="Select File", button_type="success")
-    # button_select_file.js_on_click(select_file)
+# Circumferential Plot
+circ_x, circ_y = pol2cart(rd_radius[0,:], rd_circ_rad)
+source_circ = ColumnDataSource(data={'x':circ_x, 'y':circ_y})
+source_circ2 = ColumnDataSource(data={'x':circ_x, 'y':circ_y})
 
-    # Contour plot
-    plot_cont = figure(title="Surface Plot", height=400, width=800,
-                tools='reset, pan, crosshair, wheel_zoom, box_zoom',
+plot_circ = figure(title="Circumferential Plot", height=800, width=800,
+                tools='reset, pan, wheel_zoom, box_zoom',
+                x_range=[- (np.max(rd_radius) + range_const), np.max(rd_radius) + range_const],
+                y_range=[- (np.max(rd_radius) + range_const), np.max(rd_radius) + range_const],)
+plot_circ.scatter(x='x', y='y', source=source_circ, size=5, legend_label="Hover View", color='blue')
+plot_circ.scatter(x='x', y='y', source=source_circ2, size=5, legend_label="Selection", color='orange')
+plot_circ.toolbar.logo = None
+
+# Longitudinal Plot
+source_long = ColumnDataSource(data={'x':rd_axial, 'y':rd_radius[:,0]})
+source_long2 = ColumnDataSource(data={'x':rd_axial, 'y':rd_radius[:,0]})
+plot_long = figure(title="Longitudinal Plot", height=400, width=800,
+                tools='reset, pan, wheel_zoom, box_zoom',
                 x_range=[rd_axial[0], rd_axial[-1]],
-                y_range=[rd_circ[0], rd_circ[-1]])
-    levels = np.linspace(rd_radius.min(), rd_radius.max(), 17)
-    contour_renderer = plot_cont.contour(x=rd_axial, y=rd_circ, z=rd_radius.T, levels=levels, fill_color=Viridis256, line_color="black", line_width=0, line_alpha=0)
-    colorbar = contour_renderer.construct_color_bar()
-    plot_cont.add_layout(colorbar, 'below')
-    plot_cont.xaxis.axis_label
-    plot_cont.toolbar.logo = None
+                y_range=[rd_radius.min() - range_const, rd_radius.max() + range_const],
+                tooltips=[("index","$index"),("(x,y)","($x,$y)")])
+plot_long.scatter(x='x', y='y', source=source_long, size=2, legend_label="Hover View", color='blue')
+plot_long.scatter(x='x', y='y', source=source_long2, size=2, legend_label="Selection", color='orange')
+plot_long.toolbar.logo = None
 
-    # Circumferential Plot
-    circ_x, circ_y = pol2cart(rd_radius[0,:], rd_circ_rad)
-    source_circ = ColumnDataSource(data={'x':circ_x, 'y':circ_y})
-    source_circ2 = ColumnDataSource(data={'x':circ_x, 'y':circ_y})
+div = Div(width=200, height=400)
+plot_cont.js_on_event(events.MouseMove, move_update(None, div))
+plot_cont.js_on_event(events.Tap, tap_update(None))
 
-    plot_circ = figure(title="Circumferential Plot", height=800, width=800,
-                    tools='reset, pan, wheel_zoom, box_zoom',
-                    x_range=[- (np.max(rd_radius) + range_const), np.max(rd_radius) + range_const],
-                    y_range=[- (np.max(rd_radius) + range_const), np.max(rd_radius) + range_const],)
-    plot_circ.scatter(x='x', y='y', source=source_circ, size=5, legend_label="Hover View", color='blue')
-    plot_circ.scatter(x='x', y='y', source=source_circ2, size=5, legend_label="Selection", color='orange')
-    plot_circ.toolbar.logo = None
+# plot_cont.add_tools(CrosshairTool(dimensions="both"))
+plot_long.add_tools(CrosshairTool(dimensions="height"))
 
-    # Longitudinal Plot
-    source_long = ColumnDataSource(data={'x':rd_axial, 'y':rd_radius[:,0]})
-    source_long2 = ColumnDataSource(data={'x':rd_axial, 'y':rd_radius[:,0]})
-    plot_long = figure(title="Longitudinal Plot", height=400, width=800,
-                    tools='reset, pan, wheel_zoom, box_zoom',
-                    x_range=[rd_axial[0], rd_axial[-1]],
-                    y_range=[rd_radius.min() - range_const, rd_radius.max() + range_const],
-                    tooltips=[("index","$index"),("(x,y)","($x,$y)")])
-    plot_long.scatter(x='x', y='y', source=source_long, size=2, legend_label="Hover View", color='blue')
-    plot_long.scatter(x='x', y='y', source=source_long2, size=2, legend_label="Selection", color='orange')
-    plot_long.toolbar.logo = None
+# Smooth Data
+button_smooth = Button(label="Smooth Data", button_type="success")
+OD = 24
+button_smooth.on_click(smooth_data)
 
-    div = Div(width=200, height=400)
-    plot_cont.js_on_event(events.MouseMove, move_update(None, div))
-    plot_cont.js_on_event(events.Tap, tap_update(None))
+# 3D Plot
+# xx, yy = np.meshgrid(rd_axial, rd_circ)
+# xx = xx.ravel()
+# yy = yy.ravel()
+# source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius.ravel()))
+# plot_3d = Surface3d(x='x', y='y', z='z', data_source=source_3d, width=400, height=400)
 
-    # plot_cont.add_tools(CrosshairTool(dimensions="both"))
-    plot_long.add_tools(CrosshairTool(dimensions="height"))
-
-    # Smooth Data
-    button_smooth = Button(label="Smooth Data", button_type="success")
-    OD = 24
-    button_smooth.on_click(smooth_data)
-
-    # 3D Plot
-    # xx, yy = np.meshgrid(rd_axial, rd_circ)
-    # xx = xx.ravel()
-    # yy = yy.ravel()
-    # source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius.ravel()))
-    # plot_3d = Surface3d(x='x', y='y', z='z', data_source=source_3d, width=400, height=400)
-
-    # curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
-    curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), plot_circ))
-    # curdoc().add_root(row(button_smooth, column(plot_cont, plot_long, plot_circ), plot_3d))
-    curdoc().title = "PDMAC UI"
+# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
+curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), plot_circ))
+# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long, plot_circ), plot_3d))
+curdoc().title = "PDMAC UI"
