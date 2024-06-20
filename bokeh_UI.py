@@ -34,48 +34,8 @@ class CreateGUI:
         self.button_select_file = FileInput(title="Select File", accept='.csv, .xlsx')
         self.button_select_file.on_change('filename', self._file_callback)
 
-        # # File selection Data Source
-        # self.file_source = ColumnDataSource({'file_contents':[], 'file_name':[]})
-        # self.file_source.on_change('data', self._file_callback)
-
-        # # Create a CustomJS callback to handle file selection
-        # select_file = CustomJS(args=dict(file_source=self.file_source), code = """
-        #                 function read_file(filename) {
-        #                     var reader = new FileReader();
-        #                     reader.onload = load_handler;
-        #                     reader.onerror = error_handler;
-        #                     // readAsDataURL represents the file's data as a base64 encoded string
-        #                     reader.readAsDataURL(filename);
-        #                 }
-
-        #                 function load_handler(event) {
-        #                     var b64string = event.target.result;
-        #                     file_source.data = {'file_contents' : [b64string], 'file_name':[input.files[0].name]};
-        #                     file_source.trigger("change");
-        #                 }
-
-        #                 function error_handler(evt) {
-        #                     if(evt.target.error.name == "NotReadableError") {
-        #                         alert("Can't read file!");
-        #                     }
-        #                 }
-
-        #                 var input = document.createElement('input');
-        #                 input.setAttribute('type', 'file');
-        #                 input.onchange = function(){
-        #                     if (window.FileReader) {
-        #                         read_file(input.files[0]);
-                            
-        #                     } else {
-        #                         alert('FileReader is not supported in this browser');
-        #                     }
-        #                 }
-        #                 input.click();
-        #                 """)
-
-        # # Button for selecting a file
-        # self.button_select_file = Button(label="Select File", button_type="success")
-        # self.button_select_file.js_on_click(select_file)
+        # Results output div
+        self.output_div = Div(width=400, height=400)
 
         # Smoothing parameters
         self.input_CI = TextInput(title="Circumferential Interval (in)", value='0.5')
@@ -115,7 +75,7 @@ class CreateGUI:
         # Circumferential Plot
         self.source_circ = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
         self.source_circ2 = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
-        self.plot_circ = figure(title="Circumferential Plot", height=600, width=600,
+        self.plot_circ = figure(title="Circumferential Plot", height=400, width=400,
                         tools='pan, wheel_zoom, box_zoom',
                         x_range=[0,1],
                         y_range=[0,1])
@@ -138,7 +98,7 @@ class CreateGUI:
 
         # Custom js_on_event functions
         self.plot_cont.js_on_event(events.MouseMove, self._move_update(None))
-        self.plot_cont.js_on_event(events.Tap, self._tap_update(None))
+        self.plot_cont.js_on_event(events.Tap, self._tap_update(None, self.output_div))
 
         controls = [self.input_OD, 
                     self.input_WT, 
@@ -154,8 +114,9 @@ class CreateGUI:
                     self.button_smooth,
                     self.button_reset]
         inputs = column(controls, width=250, height=800)
-        plots = column([self.plot_cont, self.plot_long])
-        layout = column(desc, row(inputs, self.button_strain, plots, self.plot_circ), height=800)
+        center_plots = column([self.plot_cont, self.plot_long])
+        last_column = column([self.output_div, self.plot_circ])
+        layout = column(desc, row(inputs, self.button_strain, center_plots, last_column), height=800)
 
         # curdoc().add_root(row(self.button_smooth, column(self.plot_cont, self.plot_long), self.plot_circ))
         curdoc().add_root(layout)
@@ -252,8 +213,8 @@ class CreateGUI:
                     """)
         return self.move_update_JS
         
-    def _tap_update(self, attr):
-        self.tap_update_JS = CustomJS(args=dict(source_long2=self.source_long2, source_circ2=self.source_circ2, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius), code="""
+    def _tap_update(self, attr, style = 'float:left;clear:left;font_size=13px'):
+        self.tap_update_JS = CustomJS(args=dict(div=self.output_div, source_long2=self.source_long2, source_circ2=self.source_circ2, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius), code="""
                         const xval = cb_obj.x; // xval = axial value
                         const yval = cb_obj.y; // yval = circumferential value
 
@@ -289,7 +250,12 @@ class CreateGUI:
                         source_circ2.data['x'] = circ_x;
                         source_circ2.data['y'] = circ_y;
                         source_circ2.change.emit();
-                    """)
+                                      
+                        const line ="<span style=%r><b>Selection:</b> Axial (in) = " + cb_obj.x + "Circumferential (deg) = " + cb_obj.y + "Radius (in) = " + cb_obj.z + "</span>\\n";
+                        const text = div.text.concat(line);
+                        const lines = text.split("\\n");
+                        div.text = lines.join("\\n");
+                    """ % (style))
         return self.tap_update_JS
     
     def _update_sources(self):
@@ -319,6 +285,6 @@ class CreateGUI:
         self.source_long2.data = {'x':self.axial, 'y':self.radius[:,0]}
 
         self.move_update_JS.args = dict(source_long=self.source_long, source_circ=self.source_circ, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius)
-        self.tap_update_JS.args = dict(source_long2=self.source_long2, source_circ2=self.source_circ2, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius)
+        self.tap_update_JS.args = dict(div=self.output_div, source_long2=self.source_long2, source_circ2=self.source_circ2, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius)
 
 CreateGUI()

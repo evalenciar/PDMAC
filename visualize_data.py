@@ -303,7 +303,7 @@ button_smooth.on_click(smooth_data)
 # source_3d = ColumnDataSource(data=dict(x=xx, y=yy, z=rd_radius.ravel()))
 # plot_3d = Surface3d(x='x', y='y', z='z', data_source=source_3d, width=400, height=400)
 
-# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
-curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), plot_circ))
+curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), div, plot_circ))
+# curdoc().add_root(row(button_smooth, column(plot_cont, plot_long), plot_circ))
 # curdoc().add_root(row(button_smooth, column(plot_cont, plot_long, plot_circ), plot_3d))
 curdoc().title = "PDMAC UI"
