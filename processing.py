@@ -299,7 +299,7 @@ class PreProcess:
             2-D array containing the radial values with shape (axial x circ), in
         """
         # self.name = rd_path.split('/')[-1].split('.')[0]    # Get the filename
-        self.name = filename
+        self.name = filename.split('.')[0]
         self.path = rd_path
         self.ILI_format = str(ILI_format)
         self.OD = OD

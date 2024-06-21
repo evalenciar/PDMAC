@@ -4,10 +4,13 @@ import numpy as np
 from bokeh import events
 from bokeh.io import curdoc
 from bokeh.layouts import column, row
-from bokeh.models import Button, TextInput, Select, ColumnDataSource, CustomJS, CrosshairTool, Div, FileInput
+from bokeh.models import Button, TextInput, Select, ColumnDataSource, CustomJS, CrosshairTool, Div, FileInput, Span, BoxSelectTool, LinearColorMapper, ColorBar, BasicTicker, FixedTicker, PreText, RadioButtonGroup
 from bokeh.plotting import figure
 from bokeh.plotting.contour import contour_data
 from bokeh.palettes import Viridis256
+
+from tkinter import Tk
+from tkinter.filedialog import askdirectory
 
 import io
 import base64
@@ -21,13 +24,15 @@ class CreateGUI:
         Create a BokehJS server for preprocessing and postprocessing PDMAC data.
         """
         self.range_const = 0
+        self.depth=0.05
+        self.length=2.00
 
         # Description
         desc = Div(text=open('description.html').read(), sizing_mode='stretch_width')
         # Text input
-        self.input_OD = TextInput(title="Outside Diameter (in)")
-        self.input_WT = TextInput(title="Wall Thickness (in)")
-        self.input_SMYS = TextInput(title="SMYS (psi)")
+        self.input_OD = TextInput(title="Outside Diameter (in)", value="24")
+        self.input_WT = TextInput(title="Wall Thickness (in)", value="0.25")
+        self.input_SMYS = TextInput(title="SMYS (psi)", value="52000")
         self.input_ILI_format = TextInput(title="ILI Format", value='southern')
 
         # File input
@@ -45,62 +50,99 @@ class CreateGUI:
         self.input_AW = TextInput(title="Axial Window", value='9')
         self.input_AS = TextInput(title="Axial Smoothing", value='0.00005')
 
-        # Button to perform Smoothing
-        self.button_smooth = Button(label="Smooth Data", button_type="success")
-        self.button_smooth.on_click(self._smooth_data)
+        # Radio button group to toggle data selection
+        self.button_data_selection = RadioButtonGroup(labels=["Raw","Smooth","Strain","SCF"], active=0)
+        self.button_data_selection.on_event('button_click', self._switch_data)
 
         # Button to reset data
         self.button_reset = Button(label="Reset Data", button_type="default")
         self.button_reset.on_click(self._reset_data)
 
+        # Button to perform Smoothing
+        self.button_smooth = Button(label="Smooth Data", button_type="primary", width=120)
+        self.button_smooth.on_click(self._smooth_data)
+
         # Button to perform strain analysis
-        self.button_strain = Button(label="Calculate Strain", button_type="success")
+        self.button_strain = Button(label="Calculate Strain", button_type="success", width=120)
         self.button_strain.on_click(self._strain)
+
+        # Button to create Input File
+        self.button_create_input = Button(label="Create Input File", button_type="warning", width=120)
+        self.button_create_input.on_click(self._create_input)
+
+        # Button to submit the Input File
+        self.button_submit_input = Button(label="Submit Input File", button_type="danger", disabled=True, width=120)
+        self.button_submit_input.on_click(self._submit_input)
+
+        # Linked crosshair tool
+        span_width = Span(dimension="width")
+        span_height = Span(dimension="height")
 
         # Contour plot
         self.axial = np.zeros(10)
         self.circ = np.zeros(10)
         self.radius = np.zeros((10,10))
         self.plot_cont = figure(title="Surface Plot", height=400, width=800,
-                    tools='pan, crosshair, wheel_zoom, box_zoom',
+                    # tools='pan, crosshair, wheel_zoom, box_zoom',
+                    tools='box_select, wheel_zoom, box_zoom',
+                    # toolbar_location=None,
                     x_range=[0,1],
                     y_range=[0,360])
-        levels = np.linspace(0, 1, 17)
-        self.contour_renderer = self.plot_cont.contour(x=self.axial, y=self.circ, z=self.radius, levels=levels, fill_color=Viridis256, line_color="black", line_width=0, line_alpha=0)
-        self.colorbar = self.contour_renderer.construct_color_bar()
-        self.plot_cont.add_layout(self.colorbar, 'below')
-        self.plot_cont.xaxis.axis_label
+        self.levels = np.linspace(0, 1, 17)
+        self.color = LinearColorMapper(palette=Viridis256, low=np.min(self.radius), high=np.max(self.radius))
+        self.contour_renderer = self.plot_cont.contour(x=self.axial, y=self.circ, z=self.radius, levels=self.levels, fill_color=Viridis256, line_color="black", line_width=0, line_alpha=0)
+        self.plot_cont.yaxis.axis_label = "Circumferential (deg)"
+        self.plot_cont.add_tools(CrosshairTool(overlay=[span_width, span_height]))
+        # self.plot_cont.toolbar.active_drag = None
         self.plot_cont.toolbar.logo = None
+        # select_tool = self.plot_cont.select(dict(type=BoxSelectTool))
+        
+        # self.colorbar = self.contour_renderer.construct_color_bar()
+        # self.plot_cont.add_layout(self.colorbar, 'below')
+        self.colorbar = ColorBar(color_mapper=self.color, location=(0,0), title='Radius (in)', 
+                                #  ticker=BasicTicker(desired_num_ticks=12), 
+                                #  ticker=FixedTicker(ticks=list(self.levels)),
+                                 bar_line_color='black', 
+                                 major_tick_line_color='white')
+        self.plot_cont.add_layout(self.colorbar, 'below')
 
         # Circumferential Plot
         self.source_circ = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
         self.source_circ2 = ColumnDataSource(data={'x':self.radius[0,:], 'y':np.deg2rad(self.circ)})
-        self.plot_circ = figure(title="Circumferential Plot", height=400, width=400,
-                        tools='pan, wheel_zoom, box_zoom',
+        self.plot_circ = figure(title="Circumferential Plot", height=350, width=350,
+                        # tools='pan, wheel_zoom, box_zoom',
+                        toolbar_location=None,
                         x_range=[0,1],
                         y_range=[0,1])
         self.plot_circ.scatter(x='x', y='y', source=self.source_circ, size=5, legend_label="Hover View", color='blue')
         self.plot_circ.scatter(x='x', y='y', source=self.source_circ2, size=5, legend_label="Selection", color='orange')
-        self.plot_circ.toolbar.logo = None
+        self.plot_circ.axis.visible = False
+        # self.plot_circ.toolbar.logo = None
 
         # Longitudinal Plot
         self.source_long = ColumnDataSource(data={'x':self.axial, 'y':self.radius[0,:]})
         self.source_long2 = ColumnDataSource(data={'x':self.axial, 'y':self.radius[0,:]})
         self.plot_long = figure(title="Longitudinal Plot", height=400, width=800,
-                        tools='pan, wheel_zoom, box_zoom',
-                        x_range=[0,1],
+                        # tools='pan, wheel_zoom, box_zoom',
+                        toolbar_location=None,
+                        # x_range=[0,1],
+                        x_range=self.plot_cont.x_range,
                         y_range=[0,1])
                         # tooltips=[("index","$index"),("(x,y)","($x,$y)")])
         self.plot_long.scatter(x='x', y='y', source=self.source_long, size=2, legend_label="Hover View", color='blue')
         self.plot_long.scatter(x='x', y='y', source=self.source_long2, size=2, legend_label="Selection", color='orange')
-        self.plot_long.toolbar.logo = None
-        self.plot_long.add_tools(CrosshairTool(dimensions="height"))
+        self.plot_long.yaxis.axis_label = "Radius (in)"
+        self.plot_long.xaxis.axis_label = "Axial (in)"
+        self.plot_long.add_tools(CrosshairTool(overlay=span_height))
+        self.plot_long.toolbar.active_drag = None
+        # self.plot_long.toolbar.logo = None
 
         # Custom js_on_event functions
         self.plot_cont.js_on_event(events.MouseMove, self._move_update(None))
         self.plot_cont.js_on_event(events.Tap, self._tap_update(None, self.output_div))
 
-        controls = [self.input_OD, 
+        controls = [self.button_data_selection,
+                    self.input_OD, 
                     self.input_WT, 
                     self.input_SMYS, 
                     self.input_ILI_format, 
@@ -110,29 +152,26 @@ class CreateGUI:
                     self.input_CW, 
                     self.input_CS, 
                     self.input_AW, 
-                    self.input_AS, 
-                    self.button_smooth,
+                    self.input_AS,
                     self.button_reset]
+        button_column = column(row([self.button_smooth, self.button_strain]), row([self.button_create_input, self.button_submit_input]), sizing_mode="stretch_height")
+        first_row = row(desc, button_column)
+
         inputs = column(controls, width=250, height=800)
+        
         center_plots = column([self.plot_cont, self.plot_long])
         last_column = column([self.output_div, self.plot_circ])
-        layout = column(desc, row(inputs, self.button_strain, center_plots, last_column), height=800)
+        layout = column(first_row, row(inputs, center_plots, last_column), height=800)
 
         # curdoc().add_root(row(self.button_smooth, column(self.plot_cont, self.plot_long), self.plot_circ))
         curdoc().add_root(layout)
         curdoc().title = "PDMAC UI"
 
     def _file_callback(self, attr, old, new):
-        # raw_contents = self.file_source.data['file_contents'][0]
-        # prefix, b64_contents = raw_contents.split(",", 1)   # Remove the prefix that JS adds  
-        # file_contents = base64.b64decode(b64_contents)
         file_contents = base64.b64decode(self.button_select_file.value)
 
         rd_path = io.StringIO(bytes.decode(file_contents))
 
-        # print(f"rd_path = {rd_path}")
-
-        # self.df = pro.ImportData(rd_path=rd_path, ILI_format=self.input_ILI_format.value, OD=self.input_OD.value, filename=self.file_source.data['file_name'][0])
         self.df = pro.PreProcess(rd_path=rd_path, ILI_format=str(self.input_ILI_format.value), OD=float(self.input_OD.value), filename=self.button_select_file.filename)
 
         self.axial  = self.df.o_axial
@@ -148,12 +187,43 @@ class CreateGUI:
         return x, y
     
     def _strain(self, attr):
-        depth=0.05
-        length=2.00
-        self.strain = pro.PostProcess(OD=float(self.input_OD.value), WT=float(self.input_WT.value), d=depth, L=length, axial=self.df.f_axial, circ=self.df.f_circ, radius=self.df.f_radius)
+        self.strain = pro.PostProcess(OD=float(self.input_OD.value), WT=float(self.input_WT.value), d=self.depth, L=self.length, axial=self.df.f_axial, circ=self.df.f_circ, radius=self.df.f_radius)
 
         self.radius = self.strain.ei
 
+        self._update_sources()
+
+    def _create_input(self, attr):
+        def select_file():
+            root = Tk()
+            root.attributes('-topmost', True)
+            root.withdraw()
+            dirname = askdirectory()  # blocking
+            if dirname:
+                return dirname + '/'
+            else:
+                return 'results/'
+
+        self.input_file = pro.PreProcess.create_input_file(self.df, WT=float(self.input_WT.value), SMYS=float(self.input_SMYS.value), results_path=select_file())
+        self.button_submit_input.disabled = False
+
+    def _submit_input(self, attr):
+        pro.PreProcess.submit_input_file(self.df)
+
+    def _switch_data(self, attr):
+        if self.button_data_selection.active == 0:
+            self.axial  = self.df.o_axial
+            self.circ   = self.df.o_circ
+            self.radius = self.df.o_radius
+        elif self.button_data_selection.active == 1:
+            self.axial  = self.df.f_axial
+            self.circ   = self.df.f_circ
+            self.radius = self.df.f_radius
+        elif self.button_data_selection.active == 2:
+            self.axial  = self.df.f_axial
+            self.circ   = self.df.f_circ
+            self.radius = self.strain.ei
+        
         self._update_sources()
 
     def _smooth_data(self, attr):
@@ -166,11 +236,7 @@ class CreateGUI:
         self._update_sources()
 
     def _reset_data(self, attr):
-        self.axial  = self.df.o_axial
-        self.circ   = self.df.o_circ
-        self.radius = self.df.o_radius
-
-        self._update_sources()
+        self._switch_data()
 
     def _move_update(self, attr):
         # Define the callback function for the contour plot
@@ -251,10 +317,33 @@ class CreateGUI:
                         source_circ2.data['y'] = circ_y;
                         source_circ2.change.emit();
                                       
-                        const line ="<span style=%r><b>Selection:</b> Axial (in) = " + cb_obj.x + "Circumferential (deg) = " + cb_obj.y + "Radius (in) = " + cb_obj.z + "</span>\\n";
-                        const text = div.text.concat(line);
-                        const lines = text.split("\\n");
-                        div.text = lines.join("\\n");
+                        const closestIndex = (num, arr) => {
+                            let curr = arr[0], diff = Math.abs(num - curr);
+                            let index = 0;
+                            for (let val = 0; val < arr.length; val++) {
+                                let newdiff = Math.abs(num - arr[val]);
+                                if (newdiff < diff) {
+                                    diff = newdiff;
+                                    curr = arr[val];
+                                    index = val;
+                                };
+                            };
+                            return index;
+                        };
+                                      
+                        var x_index = closestIndex(cb_obj.x, source_long2.data['x'])
+                        var z_val = source_long2.data['y'][x_index];
+                        var x_val = cb_obj.x.toFixed(2)
+                        var y_val = cb_obj.y.toFixed(2)
+                        
+                        const line ="<span style=%r><b>Selection:</b><br /> Axial (in) = " + x_val + " [" + (x_val/12).toFixed(2) + " feet]<br />Circumferential (deg) = " + y_val + "<br />Radius (in) = " + z_val.toFixed(3) + "</span>\\n";
+                        div.text = line;
+                                      
+                        // const text = div.text.concat(line);
+                        // const lines = text.split("\\n")
+                        // if (lines.length > 35)
+                           // lines.shift();
+                        // div.text = lines.join("\\n");
                     """ % (style))
         return self.tap_update_JS
     
@@ -264,10 +353,13 @@ class CreateGUI:
         self.plot_cont.x_range.end = self.axial[-1]
         self.plot_cont.y_range.start = self.circ[0]
         self.plot_cont.y_range.end = self.circ[-1]
-        levels = np.linspace(self.radius.min(), self.radius.max(), 17)
-        self.contour_renderer.set_data(contour_data(x=self.axial, y=self.circ, z=self.radius.T, levels=levels))
+        self.levels = np.linspace(np.min(self.radius), np.max(self.radius), 17)
+        self.contour_renderer.set_data(contour_data(x=self.axial, y=self.circ, z=self.radius.T, levels=self.levels))
         # self.colorbar.levels = list(levels)
         # self.colorbar.ticker.ticks = list(levels)
+        self.color.low = np.min(self.radius)
+        self.color.high = np.max(self.radius)
+        # self.colorbar.ticker = FixedTicker(ticks=list(self.levels))
 
         self.plot_circ.x_range.start = - (self.radius.max() + self.range_const)
         self.plot_circ.x_range.end = self.radius.max() + self.range_const
@@ -277,8 +369,6 @@ class CreateGUI:
         self.source_circ.data = {'x':circ_x, 'y':circ_y}
         self.source_circ2.data = {'x':circ_x, 'y':circ_y}
 
-        self.plot_long.x_range.start = self.axial[0]
-        self.plot_long.x_range.end = self.axial[-1]
         self.plot_long.y_range.start = self.radius.min() - self.range_const
         self.plot_long.y_range.end = self.radius.max() + self.range_const
         self.source_long.data = {'x':self.axial, 'y':self.radius[:,0]}
