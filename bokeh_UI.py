@@ -51,7 +51,7 @@ class CreateGUI:
         self.input_AS = TextInput(title="Axial Smoothing", value='0.00005')
 
         # Radio button group to toggle data selection
-        self.button_data_selection = RadioButtonGroup(labels=["Raw","Smooth","Strain","SCF"], active=0)
+        self.button_data_selection = RadioButtonGroup(labels=["Raw"], active=0)
         self.button_data_selection.on_event('button_click', self._switch_data)
 
         # Button to reset data
@@ -140,7 +140,7 @@ class CreateGUI:
 
         # Custom js_on_event functions
         self.plot_cont.js_on_event(events.MouseMove, self._move_update(None))
-        self.plot_cont.js_on_event(events.Tap, self._tap_update(None, self.output_div))
+        self.plot_cont.js_on_event(events.Tap, self._tap_update(None, radius_label=self.plot_long.yaxis.axis_label))
 
         controls = [self.button_data_selection,
                     self.input_OD, 
@@ -194,6 +194,9 @@ class CreateGUI:
 
         self._update_sources()
 
+        self.button_data_selection.labels = ["Raw","Smooth","Strain"]
+        self.button_data_selection.active = 2
+
     def _create_input(self, attr):
         def select_file():
             root = Tk()
@@ -216,25 +219,37 @@ class CreateGUI:
             self.axial  = self.df.o_axial
             self.circ   = self.df.o_circ
             self.radius = self.df.o_radius
+            self.plot_long.yaxis.axis_label = "Radius (in)"
         elif self.button_data_selection.active == 1:
             self.axial  = self.df.f_axial
             self.circ   = self.df.f_circ
             self.radius = self.df.f_radius
+            self.plot_long.yaxis.axis_label = "Radius (in)"
         elif self.button_data_selection.active == 2:
             self.axial  = self.df.f_axial
             self.circ   = self.df.f_circ
             self.radius = self.strain.ei
+            self.plot_long.yaxis.axis_label = "Strain (in/in)"
         
         self._update_sources()
 
     def _smooth_data(self, attr):
-        self.df.smooth_data()
+        
+        def f_smooth_data():
+            self.df.smooth_data()
+            self.button_smooth.disabled = False
 
-        self.axial  = self.df.f_axial
-        self.circ   = self.df.f_circ
-        self.radius = self.df.f_radius
+            self.axial  = self.df.f_axial
+            self.circ   = self.df.f_circ
+            self.radius = self.df.f_radius
 
-        self._update_sources()
+            self._update_sources()
+
+            self.button_data_selection.labels = ["Raw","Smooth"]
+            self.button_data_selection.active = 1
+
+        self.button_smooth.disabled = True
+        curdoc().add_next_tick_callback(f_smooth_data)
 
     def _reset_data(self, attr):
         self._switch_data
@@ -280,7 +295,7 @@ class CreateGUI:
                     """)
         return self.move_update_JS
         
-    def _tap_update(self, attr, style = 'float:left;clear:left;font_size=13px'):
+    def _tap_update(self, attr, radius_label = 'Radius (in)', style = 'float:left;clear:left;font_size=13px'):
         self.tap_update_JS = CustomJS(args=dict(div=self.output_div, source_long2=self.source_long2, source_circ2=self.source_circ2, axial=self.axial, circ=self.circ, circ_rad=np.deg2rad(self.circ), radius=self.radius), code="""
                         const xval = cb_obj.x; // xval = axial value
                         const yval = cb_obj.y; // yval = circumferential value
@@ -337,7 +352,7 @@ class CreateGUI:
                         var x_val = cb_obj.x.toFixed(2)
                         var y_val = cb_obj.y.toFixed(2)
                         
-                        const line ="<span style=%r><b>Selection:</b><br /> Axial (in) = " + x_val + " [" + (x_val/12).toFixed(2) + " feet]<br />Circumferential (deg) = " + y_val + "<br />Radius (in) = " + z_val.toFixed(3) + "</span>\\n";
+                        const line ="<span style=%r><b>Selection:</b><br /> Axial (in) = " + x_val + " [" + (x_val/12).toFixed(2) + " feet]<br />Circumferential (deg) = " + y_val + "<br />%s = " + z_val.toFixed(3) + "</span>\\n";
                         div.text = line;
                                       
                         // const text = div.text.concat(line);
@@ -345,7 +360,7 @@ class CreateGUI:
                         // if (lines.length > 35)
                            // lines.shift();
                         // div.text = lines.join("\\n");
-                    """ % (style))
+                    """ % (style, radius_label))
         return self.tap_update_JS
     
     def _update_sources(self):
