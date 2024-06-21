@@ -1,4 +1,5 @@
 # Ignore the following folders
+archive/
 data/
 references/
 results/

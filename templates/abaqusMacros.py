@@ -1,10 +1,13 @@
 # -*- coding: mbcs -*-
 # Do not delete the following import lines
 from odbAccess import *
+from abaqus import *
 from abaqusConstants import *
 from visualization import *
 from viewerModules import * # Temp
 from driverUtils import executeOnCaeStartup # Temp
+import xyPlot
+import displayGroupOdbToolset as dgo
 import __main__
 import os
 import glob
@@ -31,7 +34,7 @@ img_labels = [fileName + '_' + s for s in img_labels]
 # Create the folder to save all of the images
 # int_review_path = 'Internal Review/'
 # int_review_path = os.getcwd() + '/'
-int_review_path = os.path.join(os.pardir, os.getcwd())
+int_review_path = os.path.join(os.pardir, os.getcwd()) + '/'
 # os.mkdir(int_review_path)
 
 session.Viewport(name='Viewport: 1', origin=(0.0, 0.0), width=300, height=150)
@@ -368,6 +371,16 @@ session.XYDataFromPath(name='RadiusData', path=pth, includeIntersections=False,
 # Output RadiusData
 x0 = session.xyDataObjects['RadiusData']
 session.writeXYReport(fileName=int_review_path + 'report_Radius.rpt', xyData=(x0, ))
+    
+# Output All COORD, Strain, and MPs Data
+# odb = session.odbs['C:/Users/ahassanin/ADV Integrity/ADV File Share - Projects/Projects/Analysis Group Management/Software Development/PDMAC/results/100978-015-FINAL/Abaqus Results/ID100978-015.odb']
+odb = session.odbs[filePath]
+session.writeFieldReport(fileName=int_review_path + 'report_All_Data.rpt', append=ON, 
+    sortItem='Node Label', odb=odb, step=0, frame=10, outputPosition=NODAL, 
+    variable=(('COORD', NODAL, ((COMPONENT, 'COOR1'), )), ('LE', 
+    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ('S', 
+    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ), 
+    stepFrame=SPECIFY)
 
 # # Read the output data
 # with open('report_MPs.rpt') as f:

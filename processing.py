@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import shutil
+import matplotlib.pyplot as plt
 
 def collect_raw_data_v1(rd_path):
     # Vendor 1
@@ -465,8 +466,7 @@ class PreProcess:
         self.f_circ = sd_circ
         self.f_radius = sd_radius
 
-    def create_input_file(self, WT, SMYS, results_path='results/', templates_path='templates/'):               
-        self.results_path = results_path
+    def create_input_file(self, WT, SMYS, results_path='results/', templates_path='templates/'):
         dent_ID     = self.name
         OD          = self.OD
         sd_axial    = self.f_axial
@@ -486,7 +486,7 @@ class PreProcess:
         except:
             # Directory already exists
             sys.exit(f'Directory {results_path} already exists. Please enter a new folder location or delete the exist Results folder.')
-        results_path = results_path + '/'
+        self.results_path = results_path + '/'
 
         # lim_cc and lim_ax is the amount of nodes to display applied to both sides in the circumferential and axial directions, respectively
         # For example, using lim_cc = 20 and lim_ax 40 will result in a field of points of (circ x axial) = (40 x 80)
@@ -559,14 +559,12 @@ class PreProcess:
         
         # Create a copy of the Input Deck Template text file
         inp_file_template_str = templates_path + 'Input Deck Template.inp'
-        inp_file_name = "Feature " + str(dent_ID)
-        inp_file_path = results_path + 'FEA Results'
-        self.inp_file_name = inp_file_name
-        self.inp_file_path = inp_file_path
+        self.inp_file_name = "Feature " + str(dent_ID)
+        self.inp_file_path = self.results_path + 'FEA Results'
         # Create a folder for the Abaqus files
-        os.mkdir(inp_file_path)
-        # inp_file_path = inp_file_path + '/'
-        inp_file_deck = inp_file_path + '/Abaqus/' + inp_file_name + '.inp'
+        os.mkdir(self.inp_file_path)
+        self.inp_file_path = self.inp_file_path + '/'
+        inp_file_deck = self.inp_file_path + 'Abaqus/' + self.inp_file_name + '.inp'
         # Load the Input Deck Template text file
         inp_file_template = open(inp_file_template_str, 'r')
         # Create a leaf directory and all intermediate ones
@@ -629,14 +627,9 @@ class PreProcess:
         # num_nodes - Total Number of Nodes
         # def_angl  - Angle for Isometric View
         
-        # Create an Internal Review folder to save all of the images and reports
-        # int_review_path = inp_file_path + 'Internal Review/'
-        int_review_path = inp_file_path + '/'
-        # os.mkdir(int_review_path)
-        
         # Create a node_info.txt file to export theses values
         info_file_name = "node_info"
-        info_file_deck = int_review_path + info_file_name + ".txt"
+        info_file_deck = self.inp_file_path + info_file_name + ".txt"
         info_file = open(info_file_deck, "w")
         # Data to write in
         info_file_contents = []
@@ -804,12 +797,8 @@ class PostProcess:
             circ_profile = self.radius[axial_index, :]
             # First derivative
             d_circ = np.gradient(circ_profile, self.circ_r)
-            # d_circ[0] = (circ_profile[1] - circ_profile[-1])/(self.circ_r[1] - (2*np.pi - self.circ_r[-1]))
-            # d_circ[-1] = (circ_profile[-2] - circ_profile[0])/((2*np.pi - self.circ_r[-2]) - self.circ_r[0])
             # Second derivative
             dd_circ = np.gradient(d_circ, self.circ_r)
-            # dd_circ[0] = (circ_profile[1] - circ_profile[-1])/(self.circ_r[1] - (2*np.pi - self.circ_r[-1]))
-            # dd_circ[-1] = (circ_profile[-2] - circ_profile[0])/((2*np.pi - self.circ_r[-2]) - self.circ_r[0])
             # Radius of curvature in polar coordinates
             R1 = (circ_profile**2 + d_circ**2)**(3/2)/abs(circ_profile**2 + 2*d_circ**2 - circ_profile*dd_circ)
             # Calculate e1 and save it for this circumferential profile
@@ -839,9 +828,129 @@ class PostProcess:
         self.R1 = R1
         self.R2 = R2
 
-        # self.df_ei = pd.DataFrame(data=ei, columns=self.circ, index=self.axial)
-        # self.df_eo = pd.DataFrame(data=eo, columns=self.circ, index=self.axial)
-        # self.df_e1 = pd.DataFrame(data=sd_e1, columns=self.circ, index=self.axial)
-        # self.df_e2 = pd.DataFrame(data=sd_e2, columns=self.circ, index=self.axial)
-        # self.df_R1 = pd.DataFrame(data=sd_R1, columns=self.circ, index=self.axial)
-        # self.df_R2 = pd.DataFrame(data=sd_R2, columns=self.circ, index=self.axial)
+    def review_abaqus_results(inp_file_name, inp_file_path):
+        file_new_name = inp_file_name + ' - '
+        
+        # Step 1: Read the report_MPs.rpt
+        with open(inp_file_path + 'report_MPs.rpt') as f:
+            report_MPs = f.readlines()
+            f.close()
+        # Delete the first 3 rows since they do not contain data
+        report_MPs.pop(0)
+        report_MPs.pop(0)
+        report_MPs.pop(0)
+        # Remove the leading and trailing spaces, also the '\n' character
+        report_MPs = [s.strip() for s in report_MPs]
+        # Split by spaces
+        report_MPs = [s.split(" ") for s in report_MPs]
+        # Remove the empty list items
+        report_MPs = [s for s in report_MPs if s != ['']]
+        # Remove the spaces and convert string numbers into floats
+        x1 = np.zeros(len(report_MPs))
+        yMPs = np.zeros(len(report_MPs))
+        for i in range(0,len(report_MPs)):
+            report_MPs[i] = [float(s) for s in report_MPs[i] if s.strip()]
+            x1[i] = report_MPs[i][0]
+            yMPs[i] = report_MPs[i][1]
+        
+        # Step 2: Read the report_Radius.rpt
+        with open(inp_file_path + 'report_Radius.rpt') as f:
+            report_Radius = f.readlines()
+            f.close()
+        # Delete the first 3 rows since they do not contain data
+        report_Radius.pop(0)
+        report_Radius.pop(0)
+        report_Radius.pop(0)
+        # Remove the leading and trailing spaces, also the '\n' character
+        report_Radius = [s.strip() for s in report_Radius]
+        # Split by spaces
+        report_Radius = [s.split(" ") for s in report_Radius]
+        # Remove the empty list items
+        report_Radius = [s for s in report_Radius if s != ['']]
+        # Remove the spaces and convert string numbers into floats
+        x2 = np.zeros(len(report_Radius))
+        R = np.zeros(len(report_Radius))
+        for i in range(0,len(report_Radius)):
+            report_Radius[i] = [float(s) for s in report_Radius[i] if s.strip()]
+            x2[i] = report_Radius[i][0]
+            R[i] = report_Radius[i][1]
+
+        # Step 3: Read the report_All_Data.rpt
+        with open(inp_file_path + 'report_All_Data.rpt') as f:
+            report_All_Data = f.readlines()
+            f.close()
+        # Delete the first X rows since they do not contain data
+        
+        # Produce the Node Path Image
+        plt.rcParams['font.size'] = 8
+        plt.rcParams['lines.markersize'] = 0.5
+        
+        fig9, ax9 = plt.subplots(figsize=(3.43,2), dpi=200)
+        ax9_1 = ax9.twinx()
+        # First Y Axis
+        ax9.plot(x1, yMPs, c='tab:blue', label='Max. Principal Stress',
+                marker='o', markerfacecolor='k', markeredgecolor='k', markersize=1)
+        ax9.set_xlabel('Position Z Along Pipe [in]')
+        ax9.set_ylabel('Maximum Principal Stress [psi]')
+        ax9.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
+        ax9.tick_params(axis='y', colors='tab:blue')
+        ax9.yaxis.label.set_color('tab:blue')
+        # Secondary Y Axis
+        ax9_1.plot(x2, R, c='tab:orange',label='Axial Radial Profile',
+                marker='o', markerfacecolor='r', markeredgecolor='r', markersize=1)
+        ax9_1.set_ylabel('Radius [in]')
+        ax9_1.tick_params(axis='y', colors='tab:orange')
+        ax9_1.yaxis.label.set_color('tab:orange')
+        # Save as the OR version
+        fig9.savefig(inp_file_path + file_new_name + '14_Nodal_Path_OR', bbox_inches='tight')
+        
+        # Adjust so that it saves as the full size
+        plt.rcParams['font.size'] = 8
+        plt.rcParams['lines.markersize'] = 0.5
+        fig9.set_size_inches(10,4)
+        fig9.suptitle('Max. Principal Stress OD along Axial Radial Profile')
+        s1,sl1 = ax9.get_legend_handles_labels()
+        s2,sl2 = ax9_1.get_legend_handles_labels()
+        s = s1 + s2
+        sl = sl1 + sl2
+        ax9.legend(s,sl)
+        fig9.savefig(inp_file_path + file_new_name + '14_Nodal_Path', dpi=200)
+        fig9.savefig('all_results/' + file_new_name + '_14_Nodal_Path.png')
+        
+        # Collect the SCF value from the information file
+        with open(inp_file_path + "node_info.txt") as f:
+            node_info = f.readlines()
+            f.close()
+        
+        node_val = [s.strip() for s in node_info]
+        node_val = [s.split("=") for s in node_val if "=" in s]
+        # Collect the Max Principal Stress Value in the OD
+        MPs = [float(s[1]) for s in node_val if "max_val_OD" in s[0]]
+        MPs = float(MPs[0])
+        # Collect the SCF Values (for ID and OD), but only keep the largest
+        SCF_ID = [float(s[1]) for s in node_val if "ID SCF" in s[0]]
+        SCF_ID = float(SCF_ID[0])
+        SCF_OD = [float(s[1]) for s in node_val if "OD SCF" in s[0]]
+        SCF_OD = float(SCF_OD[0])
+        SCF = max(SCF_ID, SCF_OD)
+        # Collect the Unaveraged Max Principal Stress Value
+        uMPs = [float(s[1]) for s in node_val if "Unavg MPs" in s[0]]
+        uMPs = float(uMPs[0])
+        # Collect the Unaveraged SCF Value
+        uSCF = [float(s[1]) for s in node_val if "Unavg SCF" in s[0]]
+        uSCF = float(uSCF[0])
+        print((time_ref + 'Averaged SCF = %.2f | Unaveraged SCF = %.2f') % (time.time() - time_start,SCF,uSCF))
+        
+        # Quality Control Point
+        # If the values disagree past a limit, then raise a flag
+        scf_limit = 0.1
+        scf_err = abs(uSCF - SCF)/uSCF
+        if scf_err >= scf_limit:
+            print((time_ref + 'Error: the comparison between the average and unaveraged SCF values exceeds 10%%') % (time.time() - time_start))
+            flag.append('The comparison between the average and unaveraged SCF values exceeds 10%. Review the dent Abaqus .odb file for more information.')
+            
+        # print((time_ref + 'Saved contents to scf_values.xlsx') % (time.time() - time_start))
+        
+        return SCF, MPs
+
+    

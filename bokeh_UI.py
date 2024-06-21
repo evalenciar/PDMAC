@@ -85,6 +85,7 @@ class CreateGUI:
         self.plot_cont = figure(title="Surface Plot", height=400, width=800,
                     # tools='pan, crosshair, wheel_zoom, box_zoom',
                     tools='box_select, wheel_zoom, box_zoom',
+                    active_drag="box_select",
                     # toolbar_location=None,
                     x_range=[0,1],
                     y_range=[0,360])
@@ -236,7 +237,7 @@ class CreateGUI:
         self._update_sources()
 
     def _reset_data(self, attr):
-        self._switch_data()
+        self._switch_data
 
     def _move_update(self, attr):
         # Define the callback function for the contour plot
