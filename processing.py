@@ -939,15 +939,15 @@ class PostProcess:
         # Collect the Unaveraged SCF Value
         uSCF = [float(s[1]) for s in node_val if "Unavg SCF" in s[0]]
         uSCF = float(uSCF[0])
-        print((time_ref + 'Averaged SCF = %.2f | Unaveraged SCF = %.2f') % (time.time() - time_start,SCF,uSCF))
+        # print((time_ref + 'Averaged SCF = %.2f | Unaveraged SCF = %.2f') % (time.time() - time_start,SCF,uSCF))
         
         # Quality Control Point
         # If the values disagree past a limit, then raise a flag
         scf_limit = 0.1
         scf_err = abs(uSCF - SCF)/uSCF
         if scf_err >= scf_limit:
-            print((time_ref + 'Error: the comparison between the average and unaveraged SCF values exceeds 10%%') % (time.time() - time_start))
-            flag.append('The comparison between the average and unaveraged SCF values exceeds 10%. Review the dent Abaqus .odb file for more information.')
+            # print((time_ref + 'Error: the comparison between the average and unaveraged SCF values exceeds 10%%') % (time.time() - time_start))
+            sys.exit('The comparison between the average and unaveraged SCF values exceeds 10%. Review the dent Abaqus .odb file for more information.')
             
         # print((time_ref + 'Saved contents to scf_values.xlsx') % (time.time() - time_start))
         
