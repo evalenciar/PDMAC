@@ -277,8 +277,8 @@ def collect_raw_data_v8(rd_path, IR):
     rd_radius = rd_radius / 25.4
     return rd_axial, rd_circ, rd_radius
 
-class PreProcess:
-    def __init__(self, rd_path, ILI_format, OD, filename):
+class Process:
+    def __init__(self, rd_path, ILI_format, OD, WT, SMYS, filename):
         """
         Import data in the desired ILI format. Below are a list of recognized ILI formats.
 
@@ -304,6 +304,8 @@ class PreProcess:
         self.path = rd_path
         self.ILI_format = str(ILI_format)
         self.OD = OD
+        self.WT = WT
+        self.SMYS = SMYS
         self.input_file = False
 
         ILI_format_list = ['Baker Hughes', 'Enduro', 'Entegra', 'Onestream', 'Quest',
@@ -466,17 +468,17 @@ class PreProcess:
         self.f_circ = sd_circ
         self.f_radius = sd_radius
 
-    def create_input_file(self, WT, SMYS, results_path='results/', templates_path='templates/'):
+    def create_input_file(self, results_path='results/', templates_path='templates/'):
         dent_ID     = self.name
         OD          = self.OD
         sd_axial    = self.f_axial
         sd_circ     = self.f_circ
         sd_radius   = self.f_radius
-        inp_wt      = WT
+        inp_wt      = self.WT
         num_cal     = sd_circ.size
         num_nodes   = sd_radius.size
         def_angl    = 60
-        bar_stress  = SMYS # This is based on the SMYS of the pipe
+        bar_stress  = self.SMYS # This is based on the SMYS of the pipe
 
         # Create an output folder for the dent analysis results.
         results_path = results_path + str(dent_ID)
@@ -559,12 +561,12 @@ class PreProcess:
         
         # Create a copy of the Input Deck Template text file
         inp_file_template_str = templates_path + 'Input Deck Template.inp'
-        self.inp_file_name = "Feature " + str(dent_ID)
+        self.inp_file_name = "Feature_" + str(dent_ID)
         self.inp_file_path = self.results_path + 'FEA Results'
         # Create a folder for the Abaqus files
         os.mkdir(self.inp_file_path)
-        self.inp_file_path = self.inp_file_path + '/'
-        inp_file_deck = self.inp_file_path + 'Abaqus/' + self.inp_file_name + '.inp'
+        self.inp_file_path = self.inp_file_path + '/Abaqus/'
+        inp_file_deck = self.inp_file_path + self.inp_file_name + '.inp'
         # Load the Input Deck Template text file
         inp_file_template = open(inp_file_template_str, 'r')
         # Create a leaf directory and all intermediate ones
@@ -610,7 +612,7 @@ class PreProcess:
             if "#Pressure#" in line:
                 # Print the value for #Pressure#
                 inp_line_index.append(f_index)
-                bar_press = (2*WT*bar_stress)/OD
+                bar_press = (2*self.WT*bar_stress)/OD
                 inp_file_contents[f_index] = inp_file_contents[f_index].replace("#Pressure#", str(round(bar_press,4)))
         # Remove the placeholder strings
         for i in inp_line_list:
@@ -671,10 +673,12 @@ class PreProcess:
         # In order to maintain the same Command Prompt environment, need to do both the
         # cd directory change and the Abaqus command in one os.system wrapper.
         command_str = "abaqus job=" + inp_file_name + " cpus=2"
-        command_dir = "cd " + os.getcwd() + "/" + inp_file_path
+        # command_dir = "cd " + os.getcwd() + "/" + inp_file_path
+        command_dir = "cd " + inp_file_path
         command = command_dir + " && " + command_str
         # Clear the existing history before running the command
         os.system('cls')
+        os.system('C:')
         os.system(command)
         os.system('cls')
 
@@ -729,30 +733,18 @@ class PreProcess:
         # - Print 11 images from the .odb file for analysis
         # - Print the MaxPrincipal value for future SCF calculations
         command_str = "abaqus viewer noGUI=" + script_name
-        command_dir = "cd " + os.getcwd() + "/" + inp_file_path
+        command_dir = "cd " + inp_file_path
         command = command_dir + " && " + command_str
 
         os.system('cls')
+        os.system('C:')
         os.system(command)
         os.system('cls')
         
         # Wait for 30 seconds for all images to be created
         time.sleep(15)
 
-class PostProcess:
-    def __init__(self, OD, WT, d, L, axial, circ, radius):
-        self.OD = OD
-        self.WT = WT
-        self.d  = d
-        self.L  = L
-        self.axial = axial
-        self.circ = circ
-        self.circ_r = np.deg2rad(self.circ)
-        self.radius = radius
-
-        self._calculate_strain()
-
-    def _calculate_strain(self):
+    def calculate_strain(self, d, L):
         """
         ASME B31.8-2020 Nonmandatory Appendix R Estimating Strain in Dents calculates
         the bending strain in the circumferential direction, e1, the bending strain in
@@ -779,26 +771,29 @@ class PostProcess:
         df_R2 : DataFrame
             DataFrame containing the Radius of Curvature in the longitudinal plane
         """
+        self.d = d
+        self.L = L
+        circ_r = np.deg2rad(self.f_circ)
 
         R0 = self.OD/2
 
         # Strain calculations
-        sd_e1 = np.zeros(self.radius.shape)
-        sd_e2 = np.zeros(self.radius.shape)
+        sd_e1 = np.zeros(self.f_radius.shape)
+        sd_e2 = np.zeros(self.f_radius.shape)
 
         e3 = (1/2)*(self.d/self.L)**2
 
         # Radius of curvatures
-        sd_R1 = np.zeros(self.radius.shape)
-        sd_R2 = np.zeros(self.radius.shape)
+        sd_R1 = np.zeros(self.f_radius.shape)
+        sd_R2 = np.zeros(self.f_radius.shape)
         
         # Calculate the bending strain in the circumferential direction, e1
-        for axial_index, circ_profile in enumerate(self.radius[:,0]):
-            circ_profile = self.radius[axial_index, :]
+        for axial_index, circ_profile in enumerate(self.f_radius[:,0]):
+            circ_profile = self.f_radius[axial_index, :]
             # First derivative
-            d_circ = np.gradient(circ_profile, self.circ_r)
+            d_circ = np.gradient(circ_profile, circ_r)
             # Second derivative
-            dd_circ = np.gradient(d_circ, self.circ_r)
+            dd_circ = np.gradient(d_circ, circ_r)
             # Radius of curvature in polar coordinates
             R1 = (circ_profile**2 + d_circ**2)**(3/2)/abs(circ_profile**2 + 2*d_circ**2 - circ_profile*dd_circ)
             # Calculate e1 and save it for this circumferential profile
@@ -806,12 +801,12 @@ class PostProcess:
             sd_R1[axial_index, :] = R1
             
         # Calculate the bending strain in the longitudinal (axial) direction, e2
-        for circ_index, axial_profile in enumerate(self.radius[0,:]):
-            axial_profile = self.radius[:, circ_index]
+        for circ_index, axial_profile in enumerate(self.f_radius[0,:]):
+            axial_profile = self.f_radius[:, circ_index]
             # First derivative
-            d_axial = np.gradient(axial_profile, self.axial)
+            d_axial = np.gradient(axial_profile, self.f_axial)
             # Second derivative
-            dd_axial = np.gradient(d_axial, self.axial)
+            dd_axial = np.gradient(d_axial, self.f_axial)
             # Radius of curvature. Added np.float64 to help division by zero -> inf
             R2 = (1 + d_axial**2)**(3/2)/np.float64(abs(dd_axial))
             R2[R2 == np.inf] = 1000000
@@ -828,11 +823,14 @@ class PostProcess:
         self.R1 = R1
         self.R2 = R2
 
-    def review_abaqus_results(inp_file_name, inp_file_path):
-        file_new_name = inp_file_name + ' - '
+    def review_abaqus_results(self):
+        file_new_name = self.inp_file_name + '_'
+        # Get the FEA Results directory
+        fea_path = self.results_path + 'FEA Results/'
+        # fea_path = self.inp_file_path
         
         # Step 1: Read the report_MPs.rpt
-        with open(inp_file_path + 'report_MPs.rpt') as f:
+        with open(fea_path + 'report_MPs.rpt') as f:
             report_MPs = f.readlines()
             f.close()
         # Delete the first 3 rows since they do not contain data
@@ -854,7 +852,7 @@ class PostProcess:
             yMPs[i] = report_MPs[i][1]
         
         # Step 2: Read the report_Radius.rpt
-        with open(inp_file_path + 'report_Radius.rpt') as f:
+        with open(fea_path + 'report_Radius.rpt') as f:
             report_Radius = f.readlines()
             f.close()
         # Delete the first 3 rows since they do not contain data
@@ -876,81 +874,111 @@ class PostProcess:
             R[i] = report_Radius[i][1]
 
         # Step 3: Read the report_All_Data.rpt
-        with open(inp_file_path + 'report_All_Data.rpt') as f:
+        with open(fea_path + 'report_All_Data.rpt') as f:
             report_All_Data = f.readlines()
             f.close()
-        # Delete the first X rows since they do not contain data
+        # Delete the first 26 rows since they do not contain data
+        report_All_Data = report_All_Data[26:-10]
+        # Remove the leading and trailing spaces, also the '\n' character
+        report_All_Data = [s.strip() for s in report_All_Data]
+        # Split by spaces
+        report_All_Data = [s.split(" ") for s in report_All_Data]
+        # Remove the empty list items
+        report_All_Data = [list(filter(None, s)) for s in report_All_Data if s !=['']]
+        # Convert string numbers into floats
+        report_All_Data = np.array(report_All_Data, dtype='float')
+
+        self.COORD = np.zeros(self.f_radius.shape)
+        self.LE_SNEG = np.zeros(self.f_radius.shape)
+        self.LE_SPOS = np.zeros(self.f_radius.shape)
+        self.S_SNEG = np.zeros(self.f_radius.shape)
+        self.S_SPOS = np.zeros(self.f_radius.shape)
+
+        # DRAFT CODE STARTS FOR MATCHING NODE INDEX
+        iall = 0
+        for iz in range(0,self.f_axial.size):
+            for it in range(0, self.f_circ.size):
+                self.COORD[iz, it] = report_All_Data[iall,1]
+                self.LE_SNEG[iz, it] = report_All_Data[iall, 2]
+                self.LE_SPOS[iz, it] = report_All_Data[iall, 3]
+                self.S_SNEG[iz, it] = report_All_Data[iall, 4]
+                self.S_SPOS[iz, it] = report_All_Data[iall, 5]
+                # inp_node.append(str(inp_node_i + 1) + ", " + str(round(sd_radius[iz,it],3)) + ", " + str(round(sd_circ[it],3)) + ", " + str(round(sd_axial[iz],3)))
+                # inp_node_i += 1
+                iall += 1
+        # DRAFT CODE ENDS
         
-        # Produce the Node Path Image
-        plt.rcParams['font.size'] = 8
-        plt.rcParams['lines.markersize'] = 0.5
         
-        fig9, ax9 = plt.subplots(figsize=(3.43,2), dpi=200)
-        ax9_1 = ax9.twinx()
-        # First Y Axis
-        ax9.plot(x1, yMPs, c='tab:blue', label='Max. Principal Stress',
-                marker='o', markerfacecolor='k', markeredgecolor='k', markersize=1)
-        ax9.set_xlabel('Position Z Along Pipe [in]')
-        ax9.set_ylabel('Maximum Principal Stress [psi]')
-        ax9.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
-        ax9.tick_params(axis='y', colors='tab:blue')
-        ax9.yaxis.label.set_color('tab:blue')
-        # Secondary Y Axis
-        ax9_1.plot(x2, R, c='tab:orange',label='Axial Radial Profile',
-                marker='o', markerfacecolor='r', markeredgecolor='r', markersize=1)
-        ax9_1.set_ylabel('Radius [in]')
-        ax9_1.tick_params(axis='y', colors='tab:orange')
-        ax9_1.yaxis.label.set_color('tab:orange')
-        # Save as the OR version
-        fig9.savefig(inp_file_path + file_new_name + '14_Nodal_Path_OR', bbox_inches='tight')
+        # # Produce the Node Path Image
+        # plt.rcParams['font.size'] = 8
+        # plt.rcParams['lines.markersize'] = 0.5
         
-        # Adjust so that it saves as the full size
-        plt.rcParams['font.size'] = 8
-        plt.rcParams['lines.markersize'] = 0.5
-        fig9.set_size_inches(10,4)
-        fig9.suptitle('Max. Principal Stress OD along Axial Radial Profile')
-        s1,sl1 = ax9.get_legend_handles_labels()
-        s2,sl2 = ax9_1.get_legend_handles_labels()
-        s = s1 + s2
-        sl = sl1 + sl2
-        ax9.legend(s,sl)
-        fig9.savefig(inp_file_path + file_new_name + '14_Nodal_Path', dpi=200)
-        fig9.savefig('all_results/' + file_new_name + '_14_Nodal_Path.png')
+        # fig9, ax9 = plt.subplots(figsize=(3.43,2), dpi=200)
+        # ax9_1 = ax9.twinx()
+        # # First Y Axis
+        # ax9.plot(x1, yMPs, c='tab:blue', label='Max. Principal Stress',
+        #         marker='o', markerfacecolor='k', markeredgecolor='k', markersize=1)
+        # ax9.set_xlabel('Position Z Along Pipe [in]')
+        # ax9.set_ylabel('Maximum Principal Stress [psi]')
+        # ax9.ticklabel_format(axis='y',style='sci',scilimits=(0,0))
+        # ax9.tick_params(axis='y', colors='tab:blue')
+        # ax9.yaxis.label.set_color('tab:blue')
+        # # Secondary Y Axis
+        # ax9_1.plot(x2, R, c='tab:orange',label='Axial Radial Profile',
+        #         marker='o', markerfacecolor='r', markeredgecolor='r', markersize=1)
+        # ax9_1.set_ylabel('Radius [in]')
+        # ax9_1.tick_params(axis='y', colors='tab:orange')
+        # ax9_1.yaxis.label.set_color('tab:orange')
+        # # Save as the OR version
+        # fig9.savefig(fea_path + file_new_name + '14_Nodal_Path_OR', bbox_inches='tight')
         
-        # Collect the SCF value from the information file
-        with open(inp_file_path + "node_info.txt") as f:
-            node_info = f.readlines()
-            f.close()
+        # # Adjust so that it saves as the full size
+        # plt.rcParams['font.size'] = 8
+        # plt.rcParams['lines.markersize'] = 0.5
+        # fig9.set_size_inches(10,4)
+        # fig9.suptitle('Max. Principal Stress OD along Axial Radial Profile')
+        # s1,sl1 = ax9.get_legend_handles_labels()
+        # s2,sl2 = ax9_1.get_legend_handles_labels()
+        # s = s1 + s2
+        # sl = sl1 + sl2
+        # ax9.legend(s,sl)
+        # fig9.savefig(fea_path + file_new_name + '14_Nodal_Path', dpi=200)
+        # # fig9.savefig('all_results/' + file_new_name + '_14_Nodal_Path.png')
         
-        node_val = [s.strip() for s in node_info]
-        node_val = [s.split("=") for s in node_val if "=" in s]
-        # Collect the Max Principal Stress Value in the OD
-        MPs = [float(s[1]) for s in node_val if "max_val_OD" in s[0]]
-        MPs = float(MPs[0])
-        # Collect the SCF Values (for ID and OD), but only keep the largest
-        SCF_ID = [float(s[1]) for s in node_val if "ID SCF" in s[0]]
-        SCF_ID = float(SCF_ID[0])
-        SCF_OD = [float(s[1]) for s in node_val if "OD SCF" in s[0]]
-        SCF_OD = float(SCF_OD[0])
-        SCF = max(SCF_ID, SCF_OD)
-        # Collect the Unaveraged Max Principal Stress Value
-        uMPs = [float(s[1]) for s in node_val if "Unavg MPs" in s[0]]
-        uMPs = float(uMPs[0])
-        # Collect the Unaveraged SCF Value
-        uSCF = [float(s[1]) for s in node_val if "Unavg SCF" in s[0]]
-        uSCF = float(uSCF[0])
-        # print((time_ref + 'Averaged SCF = %.2f | Unaveraged SCF = %.2f') % (time.time() - time_start,SCF,uSCF))
+        # # Collect the SCF value from the information file
+        # with open(fea_path + "node_info.txt") as f:
+        #     node_info = f.readlines()
+        #     f.close()
         
-        # Quality Control Point
-        # If the values disagree past a limit, then raise a flag
-        scf_limit = 0.1
-        scf_err = abs(uSCF - SCF)/uSCF
-        if scf_err >= scf_limit:
-            # print((time_ref + 'Error: the comparison between the average and unaveraged SCF values exceeds 10%%') % (time.time() - time_start))
-            sys.exit('The comparison between the average and unaveraged SCF values exceeds 10%. Review the dent Abaqus .odb file for more information.')
+        # node_val = [s.strip() for s in node_info]
+        # node_val = [s.split("=") for s in node_val if "=" in s]
+        # # Collect the Max Principal Stress Value in the OD
+        # MPs = [float(s[1]) for s in node_val if "max_val_OD" in s[0]]
+        # MPs = float(MPs[0])
+        # # Collect the SCF Values (for ID and OD), but only keep the largest
+        # SCF_ID = [float(s[1]) for s in node_val if "ID SCF" in s[0]]
+        # SCF_ID = float(SCF_ID[0])
+        # SCF_OD = [float(s[1]) for s in node_val if "OD SCF" in s[0]]
+        # SCF_OD = float(SCF_OD[0])
+        # SCF = max(SCF_ID, SCF_OD)
+        # # Collect the Unaveraged Max Principal Stress Value
+        # uMPs = [float(s[1]) for s in node_val if "Unavg MPs" in s[0]]
+        # uMPs = float(uMPs[0])
+        # # Collect the Unaveraged SCF Value
+        # uSCF = [float(s[1]) for s in node_val if "Unavg SCF" in s[0]]
+        # uSCF = float(uSCF[0])
+        # # print((time_ref + 'Averaged SCF = %.2f | Unaveraged SCF = %.2f') % (time.time() - time_start,SCF,uSCF))
+        
+        # # Quality Control Point
+        # # If the values disagree past a limit, then raise a flag
+        # scf_limit = 0.1
+        # scf_err = abs(uSCF - SCF)/uSCF
+        # if scf_err >= scf_limit:
+        #     # print((time_ref + 'Error: the comparison between the average and unaveraged SCF values exceeds 10%%') % (time.time() - time_start))
+        #     sys.exit('The comparison between the average and unaveraged SCF values exceeds 10%. Review the dent Abaqus .odb file for more information.')
             
-        # print((time_ref + 'Saved contents to scf_values.xlsx') % (time.time() - time_start))
+        # # print((time_ref + 'Saved contents to scf_values.xlsx') % (time.time() - time_start))
         
-        return SCF, MPs
+        # # return SCF, MPs
 
     

@@ -74,6 +74,10 @@ class CreateGUI:
         self.button_submit_input = Button(label="Submit Input File", button_type="danger", disabled=True, width=120)
         self.button_submit_input.on_click(self._submit_input)
 
+        # Button to review SCF
+        self.button_review_SCF = Button(label="Review SCF", button_type="success", disabled=True, width=120)
+        self.button_review_SCF.on_click(self._review_SCF)
+
         # Linked crosshair tool
         span_width = Span(dimension="width")
         span_height = Span(dimension="height")
@@ -155,7 +159,7 @@ class CreateGUI:
                     self.input_AW, 
                     self.input_AS,
                     self.button_reset]
-        button_column = column(row([self.button_smooth, self.button_strain]), row([self.button_create_input, self.button_submit_input]), sizing_mode="stretch_height")
+        button_column = column(row([self.button_smooth, self.button_strain]), row([self.button_create_input, self.button_submit_input]), self.button_review_SCF, sizing_mode="stretch_height")
         first_row = row(desc, button_column)
 
         inputs = column(controls, width=250, height=800)
@@ -173,7 +177,7 @@ class CreateGUI:
 
         rd_path = io.StringIO(bytes.decode(file_contents))
 
-        self.df = pro.PreProcess(rd_path=rd_path, ILI_format=str(self.input_ILI_format.value), OD=float(self.input_OD.value), filename=self.button_select_file.filename)
+        self.df = pro.Process(rd_path=rd_path, ILI_format=str(self.input_ILI_format.value), OD=float(self.input_OD.value), WT=float(self.input_WT.value), SMYS=float(self.input_SMYS.value), filename=self.button_select_file.filename)
 
         self.axial  = self.df.o_axial
         self.circ   = self.df.o_circ
@@ -188,9 +192,8 @@ class CreateGUI:
         return x, y
     
     def _strain(self, attr):
-        self.strain = pro.PostProcess(OD=float(self.input_OD.value), WT=float(self.input_WT.value), d=self.depth, L=self.length, axial=self.df.f_axial, circ=self.df.f_circ, radius=self.df.f_radius)
-
-        self.radius = self.strain.ei
+        self.df.calculate_strain(d=0.1, L=3)
+        self.radius = self.df.ei
 
         self._update_sources()
 
@@ -208,11 +211,30 @@ class CreateGUI:
             else:
                 return 'results/'
 
-        self.input_file = pro.PreProcess.create_input_file(self.df, WT=float(self.input_WT.value), SMYS=float(self.input_SMYS.value), results_path=select_file())
+        self.df.create_input_file(results_path=select_file())
         self.button_submit_input.disabled = False
 
     def _submit_input(self, attr):
-        pro.PreProcess.submit_input_file(self.df)
+        def f_submit_input():
+            self.df.submit_input_file()
+
+            self.button_submit_input.disabled = False
+            self.button_review_SCF.disabled = False
+
+        self.button_submit_input.disabled = True
+        curdoc().add_next_tick_callback(f_submit_input)
+
+    def _review_SCF(self, attr):
+        def f_review_SCF():
+            self.df.review_abaqus_results()
+            self.radius = self.df.S_SPOS
+
+            self._update_sources()
+
+            self.button_data_selection.labels = ["Raw","Smooth","Strain","SPOS","SNEG"]
+            self.button_data_selection.active = 3
+        
+        curdoc().add_next_tick_callback(f_review_SCF)
 
     def _switch_data(self, attr):
         if self.button_data_selection.active == 0:
@@ -220,21 +242,35 @@ class CreateGUI:
             self.circ   = self.df.o_circ
             self.radius = self.df.o_radius
             self.plot_long.yaxis.axis_label = "Radius (in)"
+            self.colorbar.title = "Radius (in)"
         elif self.button_data_selection.active == 1:
             self.axial  = self.df.f_axial
             self.circ   = self.df.f_circ
             self.radius = self.df.f_radius
             self.plot_long.yaxis.axis_label = "Radius (in)"
+            self.colorbar.title = "Radius (in)"
         elif self.button_data_selection.active == 2:
             self.axial  = self.df.f_axial
             self.circ   = self.df.f_circ
-            self.radius = self.strain.ei
+            self.radius = self.df.ei
             self.plot_long.yaxis.axis_label = "Strain (in/in)"
+            self.colorbar.title = "Strain (in/in)"
+        elif self.button_data_selection.active == 3:
+            self.axial  = self.df.f_axial
+            self.circ   = self.df.f_circ
+            self.radius = self.df.S_SPOS
+            self.plot_long.yaxis.axis_label = "SPOS SCF"
+            self.colorbar.title = "SPOS SCF"
+        elif self.button_data_selection.active == 4:
+            self.axial  = self.df.f_axial
+            self.circ   = self.df.f_circ
+            self.radius = self.df.S_SNEG
+            self.plot_long.yaxis.axis_label = "SNEG SCF"
+            self.colorbar.title = "SNEG SCF"
         
         self._update_sources()
 
     def _smooth_data(self, attr):
-        
         def f_smooth_data():
             self.df.smooth_data()
             self.button_smooth.disabled = False

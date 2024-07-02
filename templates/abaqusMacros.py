@@ -14,11 +14,6 @@ import glob
 # import matplotlib.pyplot as plt
 import numpy as np
 
-# DEBUGGING
-# Change Console working directory
-# os.chdir()
-# os.chdir('C:\\Users\\intern\\ADV Integrity\\ADV File Share - Software Development\\Excel ILI Dent Processing (PDMAC Tool)\\PDMAC')
-
 # Open the only .odb file in the directory
 filePath = glob.glob(os.getcwd() + '\\*.odb')[0]
 # Collect the file name, example: Dent1234
@@ -34,7 +29,7 @@ img_labels = [fileName + '_' + s for s in img_labels]
 # Create the folder to save all of the images
 # int_review_path = 'Internal Review/'
 # int_review_path = os.getcwd() + '/'
-int_review_path = os.path.join(os.pardir, os.getcwd()) + '/'
+int_review_path = os.path.join(os.getcwd(), os.pardir) + '/'
 # os.mkdir(int_review_path)
 
 session.Viewport(name='Viewport: 1', origin=(0.0, 0.0), width=300, height=150)
@@ -215,7 +210,7 @@ inp_max_node_OD[0] = int(inp_max_node_OD[0])
 
 # All of these inputs need to be in interger format
 # Open the node_info.txt file to collect theses values
-with open(int_review_path + "node_info.txt") as f:
+with open(int_review_path + "Abaqus/node_info.txt") as f:
     info_lines = f.readlines()
     f.close()
 
@@ -335,7 +330,21 @@ session.printToFile(fileName=int_review_path + img_labels[img_id], format=PNG, c
     session.viewports['Viewport: 1'], ))
 
 # =============================================================================
-# Part E: Create a Nodal Path down the maximum Max. Prin OD location
+# Part E: Output all Coordinate, Strain, and Max. Principal Stress Data
+# =============================================================================
+
+# Output All COORD, Strain, and MPs Data
+odb = session.odbs[filePath]
+session.fieldReportOptions.setValues(printXYData=ON, printTotal=OFF)
+session.writeFieldReport(fileName=int_review_path + 'report_All_Data.rpt', append=ON, 
+    sortItem='Node Label', odb=odb, step=0, frame=10, outputPosition=NODAL, 
+    variable=(('COORD', NODAL, ((COMPONENT, 'COOR1'), )), ('LE', 
+    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ('S', 
+    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ), 
+    stepFrame=SPECIFY)
+
+# =============================================================================
+# Part F: Create a Nodal Path down the maximum Max. Prin OD location
 # =============================================================================
 
 # Create a Path
@@ -371,16 +380,6 @@ session.XYDataFromPath(name='RadiusData', path=pth, includeIntersections=False,
 # Output RadiusData
 x0 = session.xyDataObjects['RadiusData']
 session.writeXYReport(fileName=int_review_path + 'report_Radius.rpt', xyData=(x0, ))
-    
-# Output All COORD, Strain, and MPs Data
-# odb = session.odbs['C:/Users/ahassanin/ADV Integrity/ADV File Share - Projects/Projects/Analysis Group Management/Software Development/PDMAC/results/100978-015-FINAL/Abaqus Results/ID100978-015.odb']
-odb = session.odbs[filePath]
-session.writeFieldReport(fileName=int_review_path + 'report_All_Data.rpt', append=ON, 
-    sortItem='Node Label', odb=odb, step=0, frame=10, outputPosition=NODAL, 
-    variable=(('COORD', NODAL, ((COMPONENT, 'COOR1'), )), ('LE', 
-    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ('S', 
-    INTEGRATION_POINT, ((INVARIANT, 'Max. In-Plane Principal'), )), ), 
-    stepFrame=SPECIFY)
 
 # # Read the output data
 # with open('report_MPs.rpt') as f:
@@ -461,7 +460,7 @@ append_info = ['\n' + append_title + '\n',
                'Unavg MPs       = ' + str(uMPs) + '\n',
                'Unavg SCF       = ' + str(uSCF) + '\n']
 
-with open(int_review_path + "node_info.txt", "a") as f:
+with open(int_review_path + "Abaqus/node_info.txt", "a") as f:
     f.writelines(append_info)
     f.close()
 
