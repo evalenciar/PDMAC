@@ -138,7 +138,7 @@ def collect_raw_data_v4(rd_path, IR):
     # The radial data needs to be the difference form the nominal radius
     # Anything negative means IN and positive means OUT
     # rd_radius = rd_radius - IR
-    rd_radius = rd_radius
+    # rd_radius = rd_radius
     return rd_axial, rd_circ, rd_radius
 
 def collect_raw_data_v5(rd_path, IR):
@@ -243,7 +243,7 @@ def collect_raw_data_v7(rd_path):
     rd_radius = rd_radius * 0.0393701
     return rd_axial, rd_circ, rd_radius
 
-def collect_raw_data_v8(rd_path, IR):
+def collect_raw_data_v8(rd_path):
     # Vendor 8
     # Works with: Campos
 
@@ -270,11 +270,27 @@ def collect_raw_data_v8(rd_path, IR):
     rd.drop(rd.head(1).index, axis=0, inplace=True)
     # Collect radial values and make sure to transpose so that [r x c] = [axial x circ]
     rd_radius = rd.to_numpy().astype(float).T
-    # The radial data needs to be the difference form the nominal radius
-    # Anything negative means IN and positive means OUT
-    # rd_radius = rd_radius - IR
     # Convert from mm to inches
     rd_radius = rd_radius / 25.4
+    return rd_axial, rd_circ, rd_radius
+
+def collect_raw_data_v9(rd_path):
+    # Vendor 9
+    # Works with: Creaform Scan
+
+    rd = pd.read_csv(rd_path, header=None)
+    # Drop any columns and rows with 'NaN' trailing at the end
+    rd = rd.dropna(axis=1, how='all')
+    rd = rd.dropna(axis=0, how='all')
+    # Axial values are in column direction, starting from column B (delete first column)
+    rd_axial = rd.loc[0][1:].to_numpy().astype(float)
+    # Circumferential values (deg) are in row direction, starting from row 2 (delete first row)
+    rd_circ = rd.loc[1:][0].to_numpy().astype(float)
+    # Drop the first column and row
+    rd.drop(rd.columns[0], axis=1, inplace=True)
+    rd.drop(rd.head(1).index, axis=0, inplace=True)
+    # Collect radial values and make sure to transpose so that [r x c] = [axial x circ]
+    rd_radius = rd.to_numpy().astype(float).T
     return rd_axial, rd_circ, rd_radius
 
 class Process:
@@ -309,7 +325,7 @@ class Process:
         self.input_file = False
 
         ILI_format_list = ['Baker Hughes', 'Enduro', 'Entegra', 'Onestream', 'Quest',
-                           'Rosen', 'TDW', 'TDW (v2)', 'PBF', 'Campos', 'Southern']
+                           'Rosen', 'TDW', 'TDW (v2)', 'PBF', 'Campos', 'Southern', 'Creaform']
 
         # Load the raw data information
         if ILI_format.lower() == 'baker hughes':
@@ -331,9 +347,11 @@ class Process:
         elif ILI_format.lower() == 'pbf':
             rd_axial, rd_circ, rd_radius = collect_raw_data_v6(rd_path)
         elif ILI_format.lower() == 'campos':
-            rd_axial, rd_circ, rd_radius = collect_raw_data_v8(rd_path, OD/2)
+            rd_axial, rd_circ, rd_radius = collect_raw_data_v8(rd_path)
         elif ILI_format.lower() == 'southern':
             rd_axial, rd_circ, rd_radius = collect_raw_data_v7(rd_path)
+        elif ILI_format.lower() == 'creaform':
+            rd_axial, rd_circ, rd_radius = collect_raw_data_v9(rd_path)
         else:
             raise Exception('ILI format %s was not found. Use one of the following: %s' % (ILI_format, ', '.join(ILI_format_list)))
         
