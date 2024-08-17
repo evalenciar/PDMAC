@@ -293,6 +293,35 @@ def collect_raw_data_v9(rd_path):
     rd_radius = rd.to_numpy().astype(float).T
     return rd_axial, rd_circ, rd_radius
 
+def collect_raw_data_v10(rd_path):
+    # Vendor 10
+    # Works with: Rosen
+
+    # Collect raw data
+    rd = pd.read_csv(rd_path, header=None, dtype=float, skiprows=1)
+    # Drop any columns and rows with 'NaN' trailing at the end
+    rd = rd.dropna(axis=1, how='all')
+    rd = rd.dropna(axis=0, how='all')
+    # Axial values are in column direction (delete second column)
+    rd_axial = rd.loc[:][0].to_numpy().astype(float)
+    # Convert [m] values to relative [in]
+    rd_axial = np.array([39.3701 *(x - rd_axial[0]) for x in rd_axial])
+    # Drop columns A and B
+    rd.drop(rd.columns[0], axis=1, inplace=True)
+    rd.drop(rd.columns[0], axis=1, inplace=True)
+    # Circumferential positioning as caliper number in column 
+    # Start from 2 since first row is Distance
+    rd_circ = rd.loc[0].to_numpy().astype(float)
+    # Since circumferential positioning may not be in the numerical order
+    rd_circ = np.arange(0, len(rd_circ))
+    # Convert from number to degrees
+    rd_circ = np.array([(x*360/len(rd_circ)) for x in rd_circ])
+    # Collect radial values and make sure that [r x c] = [axial x circ]
+    rd_radius = rd.to_numpy().astype(float)
+    # Convert from [mm] to [in]
+    rd_radius = rd_radius / 25.4
+    return rd_axial, rd_circ, rd_radius
+
 class Process:
     def __init__(self, rd_path, ILI_format, OD, WT, SMYS, filename):
         """
@@ -352,6 +381,8 @@ class Process:
             rd_axial, rd_circ, rd_radius = collect_raw_data_v7(rd_path)
         elif ILI_format.lower() == 'creaform':
             rd_axial, rd_circ, rd_radius = collect_raw_data_v9(rd_path)
+        elif ILI_format.lower() == 'rosen2':
+            rd_axial, rd_circ, rd_radius = collect_raw_data_v10(rd_path)
         else:
             raise Exception('ILI format %s was not found. Use one of the following: %s' % (ILI_format, ', '.join(ILI_format_list)))
         
@@ -568,6 +599,45 @@ class Process:
         # Create the boundary condition nodes, *BCNodes
         # The first set of nodes at the start Z position, and the second at the last Z position
         inp_bcnode = list(range(1, theta_len + 1)) + list(range(inp_node_i - theta_len, inp_node_i + 1))
+        
+        # Create the indenter shape using R1 (Circumferential Radius) and R2 (Axial Radius) from the deepest part of the dent
+        sd_circ_rad = np.deg2rad(sd_circ)
+        # [Index, Value] in Circumferential Direction
+        min_ind = np.unravel_index(np.argmin(sd_radius), sd_radius.shape)
+
+        # Select the circumferential profile including the deepest part of the dent
+        circ_profile = sd_radius[min_ind[0], :]
+        # First derivative
+        d_circ = np.gradient(circ_profile, sd_circ_rad)
+        # Second derivative
+        dd_circ = np.gradient(d_circ, sd_circ_rad)
+        # Radius of curvature in polar coordinates, select only the one corresponding to the deepest dent
+        R1 = (circ_profile**2 + d_circ**2)**(3/2)/abs(circ_profile**2 + 2*d_circ**2 - circ_profile*dd_circ)
+        R1 = R1[min_ind[1]]
+
+        # Select the axial profile including the deepest part of the dent
+        axial_profile = sd_radius[:, min_ind[1]]
+        # First derivative
+        d_axial = np.gradient(axial_profile, sd_axial)
+        # Second derivative
+        dd_axial = np.gradient(d_axial, sd_axial)
+        # Radius of curvature, select only the one corresponding to the deepest dent
+        R2 = (1 + d_axial**2)**(3/2)/np.float64(abs(dd_axial))
+        R2[R2 == np.inf] = 1000000
+        R2 = R2[min_ind[0]]
+
+        # Equation for the ellipsoid
+        d=1.35
+        A = np.sqrt(R2*d)
+        B = np.sqrt(R1*d)
+        xx = np.linspace(-A,A,50)
+        yy = np.linspace(-B,B,50)
+        fun = d**2 * (1 - xx**2/A**2 - yy**2/B**2)
+        fun[fun < 0] = 0
+        Z = -np.sqrt(fun)
+        Z = Z + abs(np.min(Z))
+
+        # Generate a mesh by taking axial cross-sections of the ellipsoid
         
         # Loop through the inp_file and search for the following keywords
         # - #Nodes#
