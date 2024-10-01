@@ -627,7 +627,7 @@ class Process:
         R2 = R2[min_ind[0]]
 
         # Equation for the ellipsoid
-        d=1.35
+        d = 1.35
         A = np.sqrt(R2*d)
         B = np.sqrt(R1*d)
         xx = np.linspace(-A,A,50)
